@@ -43,7 +43,7 @@ class Player:
     energy: int=100; max_energy: int=100; day: int=1; island_size: int=1
     weapon: Optional[str]=None; armor: Optional[str]=None
     exp: int=0; level: int=1
-    inventory: Dict=field(default_factory=dict); buildings: List=field(default_factory=list)
+    inventory: Dict=field(default_factory=dict); buildings: List=field(default_factory=list); dur: Dict=field(default_factory=dict)
     achievements: List=field(default_factory=list); pages_found: List=field(default_factory=list); ending_unlocked: str=""
     fish_count: int=0; enemy_kills: int=0; build_count: int=0
     def is_alive(self): return self.health>0
@@ -189,7 +189,8 @@ class Game:
         self.running=True
         self.fn={'lg':pygame.font.Font(None,52),'md':pygame.font.Font(None,36),
                  'sm':pygame.font.Font(None,26),'xs':pygame.font.Font(None,20)}
-        self.p=Player(); self.p.inventory={}
+        self.p=Player(); self.p.inventory={}; self.p.dur={}
+        self.p.weapon="木棍"; self.p.dur["木棍"]=30
         self.pts=3; self.state="menu"
         self.ce=None; self.chp=0; self.clog=[]
         self.parts=Parts(); self.dis=[]; self.msgs=[]
@@ -199,6 +200,7 @@ class Game:
         self.snd={}; self._mk_snd()
         self.build_slots=self._gen_slots()
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
+        self.p.weapon="木棍"; self.p.dur={"木棍":30}
         self.show_inv=False; self.show_cft=False; self.show_ach=False; self.show_bld=False
         self.intro_slide=0; self.intro_t=0.0; self.intro_done=False
         self.quest=None; self.drift_opened=False; self.page_to_show=None
@@ -271,6 +273,12 @@ class Game:
             elif r<.85: c['绳索']=c.get('绳索',0)+random.randint(1,2)
         for i,n in c.items(): self.p.add(i,n)
         self.p.fish_count+=1; self._play('catch')
+        if self.p.weapon and self.p.weapon in self.p.dur:
+            self.p.dur[self.p.weapon]-=1
+            if self.p.dur[self.p.weapon]<=0:
+                ow=self.p.weapon; self.p.weapon=None
+                if ow!='木棍': self.p.add(ow,1); self.add_msg('WEAPON '+ow+' broken!')
+                else: self.p.dur[ow]=30; self.add_msg('WEAPON '+ow+' fixed!')
         self.parts.burst(SW//2,SH//2+50,25,C_OCEAN,5,8)
         s=','.join(f'{i}x{n}' for i,n in c.items())
         self.add_msg(f'🎣 捕捞成功！获得: {s}'); self._check_ach()
@@ -289,6 +297,12 @@ class Game:
             self._check_quest('item',f.get(self.quest.target,0))
         self.parts.burst(SW//2,SH//2+50,20,C_GRASS,4,7); self._play('explore')
         s=','.join(f'{i}x{n}' for i,n in f.items()); self.add_msg(f'🗺 探索发现: {s}')
+        if self.p.weapon and self.p.weapon in self.p.dur:
+            self.p.dur[self.p.weapon]-=1
+            if self.p.dur[self.p.weapon]<=0:
+                ow=self.p.weapon; self.p.weapon=None
+                if ow!='木棍': self.p.add(ow,1); self.add_msg('WEAPON '+ow+' broken!')
+                else: self.p.dur[ow]=30; self.add_msg('WEAPON '+ow+' fixed!')
         if random.random()<.30:
             n=random.choice(['海蟹','海蟹','鲨鱼','鲨鱼','海蛇','海蛇','巨型章鱼','海龙王'])
             self.ce=ENEMIES[n]; self.chp=self.ce.max_hp
@@ -320,8 +334,8 @@ class Game:
         self.parts.burst(SW//2,SH//2,30,C_SUCCESS,5,8)
         tp=ITEMS.get(name)
         if tp:
-            if tp[0]=='weapon': self.p.weapon=name; self.add_msg(f'⚔ 制造了 {name} 并装备！')
-            elif tp[0]=='armor': self.p.armor=name; self.add_msg(f'🛡 制造了 {name} 并装备！')
+            if tp[0]=='weapon': self.p.weapon=name; self.p.dur[name]={'木棍':30,'石矛':50,'鱼叉':80,'三叉戟':999}.get(name,100); self.add_msg(f'⚔ 制造了 {name} 并装备！')
+            elif tp[0]=='armor': self.p.armor=name; self.p.dur[name]={'树叶衣':20,'兽皮甲':40,'贝壳甲':60,'海神甲':999}.get(name,50); self.add_msg(f'🛡 制造了 {name} 并装备！')
             elif tp[0]=='building': self.add_msg(f'🏗 制造了 {name}！')
             else: self.add_msg(f'✅ 制造了 {name}！')
         else: self.add_msg(f'✅ 制造了 {name}！')
@@ -344,7 +358,14 @@ class Game:
 
     def _ca_attack(self):
         if not self.ce: return
-        e=self.ce; dmg=max(1,self.p.patk()-e.dfs+random.randint(-3,3))
+        e=self.ce
+        if self.p.weapon and self.p.weapon in self.p.dur:
+            self.p.dur[self.p.weapon]-=2
+            if self.p.dur[self.p.weapon]<=0:
+                ow=self.p.weapon; self.p.weapon=None
+                if ow!='木棍': self.p.add(ow,1); self.add_msg('WEAPON '+ow+' broken!')
+                else: self.p.dur[ow]=30; self.add_msg('WEAPON '+ow+' fixed!')
+        dmg=max(1,self.p.patk()-e.dfs+random.randint(-3,3))
         self.chp-=dmg; self.clog=[f'⚔ 你造成 {dmg} 伤害！敌人HP:{max(0,self.chp)}']
         self._play('attack'); self.parts.burst(900,300,10,C_HEALTH,4,5)
         if self.chp<=0:
@@ -432,6 +453,10 @@ class Game:
     def _reward_quest(self):
         if not self.quest: return
         rew=self.quest.reward; msg="🎁 任务奖励："
+        if "武器" in rew:
+            self.p.add(rew["武器"]); self.p.weapon=rew["武器"]
+            dur_map={"木棍":30,"石矛":50,"鱼叉":80,"三叉戟":999}
+            self.p.dur[rew["武器"]]=dur_map.get(rew["武器"],100)
         if "经验" in rew: self.p.exp+=rew["经验"]; msg+="经验+"+str(rew["经验"])+" "
         if "生命" in rew: self.p.health=min(100,self.p.health+rew["生命"]); msg+="生命+"+str(rew["生命"])+" "
         if "金属" in rew: self.p.add("金属",rew["金属"]); msg+="金属+"+str(rew["金属"])
@@ -535,6 +560,10 @@ class Game:
             if any(b.name=='防御墙' for b in self.p.buildings): dmg=int(dmg*.6); self.add_msg('🧱 防御墙减免了伤害！')
             if any(b.name=='石屋' for b in self.p.buildings): dmg=int(dmg*.8)
             self.p.health=max(0,self.p.health-dmg); self.add_msg(f'⚠ {dt}来袭！受到 {dmg} 点伤害！'); self._play('hurt')
+            if self.p.armor and self.p.armor in self.p.dur:
+                self.p.dur[self.p.armor]-=2
+                if self.p.dur[self.p.armor]<=0:
+                    oa=self.p.armor; self.p.armor=None; self.add_msg('ARMOR '+oa+' broken!')
         self._check_ach()
         if self.quest: self._check_quest("day",1)
         self._spawn_quest()
@@ -723,6 +752,10 @@ class Game:
         t=self.fn["xs"].render("🍖 {}".format(self.p.hunger),True,C_WHITE); self.screen.blit(t,(25,50))
         self._bar(20,76,220,22,self.p.energy,100,C_ENERGY)
         t=self.fn["xs"].render("⚡ {}".format(self.p.energy),True,C_BLACK); self.screen.blit(t,(25,78))
+        wp=self.p.weapon or "无"
+        if self.p.weapon and self.p.weapon in self.p.dur:
+            d=self.p.dur[self.p.weapon]; col=C_SUCCESS if d>15 else C_HUNGER if d>5 else C_HEALTH
+            t=self.fn["xs"].render("⚔ "+wp+": "+str(d),True,col); self.screen.blit(t,(250,20))
         t=self.fn["md"].render("📅 第 {} 天".format(self.p.day),True,C_GOLD); self.screen.blit(t,(250,22))
         t=self.fn["sm"].render("行动点: {}/3".format(self.pts),True,C_WHITE); self.screen.blit(t,(250,55))
         t=self.fn["sm"].render("等级:{}  经验:{}/{}".format(self.p.level,self.p.exp,self.p.level*30),True,C_SUCCESS); self.screen.blit(t,(250,82))
@@ -772,7 +805,21 @@ class Game:
         self._btn(840,SH-115,120,50,"🏆 成就",C_GOLD,C_BLACK)
         self._btn(975,SH-115,120,50,"💾 存档",C_OCEAN,C_WHITE)
         self._btn(1110,SH-115,120,50,"🌅 下一天",C_WARNING,C_WHITE)
-        self._btn(30,SH-200,160,55,"📋 托盘",C_DARK,C_WHITE)
+        wp=self.p.weapon or '无'
+        if self.p.weapon and self.p.weapon in self.p.dur:
+            d=self.p.dur[self.p.weapon]; col=C_SUCCESS if d>15 else C_HUNGER if d>5 else C_HEALTH
+            t=self.fn["xs"].render(f'W:{wp[:2]}({d})',True,col)
+        else:
+            t=self.fn["xs"].render(f'W:{wp[:2]}',True,(100,100,100))
+        self.screen.blit(t,(35,SH-197))
+        ar=self.p.armor or '无'
+        if self.p.armor and self.p.armor in self.p.dur:
+            d=self.p.dur[self.p.armor]; col=C_SUCCESS if d>15 else C_HUNGER if d>5 else C_HEALTH
+            t=self.fn["xs"].render(f'A:{ar[:2]}({d})',True,col)
+        else:
+            t=self.fn["xs"].render(f'A:{ar[:2]}',True,(100,100,100))
+        self.screen.blit(t,(135,SH-197))
+        self._btn(235,SH-200,160,55,"📋 托盘",C_DARK,C_WHITE)
 
 
     def _draw_inventory_overlay(self):
@@ -793,6 +840,9 @@ class Game:
             pygame.draw.rect(self.screen,col,(x,y,30,30),border_radius=5)
             pygame.draw.rect(self.screen,C_WHITE,(x,y,30,30),1,border_radius=5)
             t=self.fn["sm"].render("{} x{}".format(item,cnt),True,C_WHITE); self.screen.blit(t,(x+38,y+4))
+            if item in self.p.dur:
+                ds=str(self.p.dur[item]); dc=C_SUCCESS if self.p.dur[item]>15 else C_HUNGER if self.p.dur[item]>5 else C_HEALTH
+                t=self.fn["xs"].render("("+ds+")",True,dc); self.screen.blit(t,(x+38,y+22))
             t=self.fn["xs"].render("[{}]".format(dtype),True,(150,150,150)); self.screen.blit(t,(x+38,y+24))
             x+=200
             if x>pw+px-200:
@@ -914,7 +964,8 @@ class Game:
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
         self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
         self.dis=[]; self.msgs=[]; self.parts=Parts(); self.ap=None
-        self.p.pages_found=[]; self.p.ending_unlocked=""; self.quest=None; self.show_drift=False; self.drift_opened=False; self.intro_done=False; self.intro_slide=0; self.intro_t=0.0
+        self.p.pages_found=[]; self.p.ending_unlocked=""; self.quest=None; self.show_drift=False
+        self.p.weapon="木棍"; self.p.dur={"木棍":30}; self.drift_opened=False; self.intro_done=False; self.intro_slide=0; self.intro_t=0.0
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type==pygame.QUIT: self.running=False
