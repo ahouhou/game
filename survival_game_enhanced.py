@@ -202,7 +202,7 @@ class Game:
         self.show_inv=False; self.show_cft=False; self.show_ach=False; self.show_bld=False
         self.intro_slide=0; self.intro_t=0.0; self.intro_done=False
         self.quest=None; self.drift_opened=False; self.page_to_show=None
-        self.explore_count=0; self.full_hunger_days=0
+        self.explore_count=0; self.full_hunger_days=0; self.show_drift=False
         self.menu_btns=[("开始游戏",SW//2-120,SH//2+60,240,60,C_SUCCESS),("继续游戏",SW//2-120,SH//2+140,240,60,C_OCEAN),("退出游戏",SW//2-120,SH//2+220,240,60,C_WARNING)]
         # ===== 视觉效果系统 =====
         self.t=0.0; self.wave_t=0.0; self.cloud_t=0.0
@@ -429,7 +429,7 @@ class Game:
         if "生命" in r: self.p.health=min(100,self.p.health+r["生命"]); msg+="生命+"+str(r["生命"])+" "
         if "金属" in r: self.p.add("金属",r["金属"]); msg+="金属+"+str(r["金属"])
         if "神秘果实" in r: self.p.add("神秘果实",r["神秘果实"]); msg+="神秘果实+"+str(r["神秘果实"])
-        self.add_msg(msg); self.quest=None
+        self.add_msg(msg); self.add_msg("🎉 请在右侧任务栏查看奖励！"); self.quest=None
 
     def _check_drift_bottle(self):
         if self.drift_opened or self.p.day<2: return
@@ -439,6 +439,7 @@ class Game:
                 self.p.pages_found.append(pg.id)
                 self.drift_opened=True; self.page_to_show=pg
                 self.add_msg("📜 发现了漂流瓶："+pg.title)
+                self.parts.burst(SW//2,SH//2,40,C_GOLD,15,10)
 
     def _get_ending(self):
         if self.p.health<=0: return ENDINGS["none"]
@@ -905,7 +906,7 @@ class Game:
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
         self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
         self.dis=[]; self.msgs=[]; self.parts=Parts(); self.ap=None
-        self.quest=None; self.drift_opened=False; self.intro_done=False; self.intro_slide=0; self.intro_t=0.0
+        self.p.pages_found=[]; self.p.ending_unlocked=""; self.quest=None; self.show_drift=False; self.drift_opened=False; self.intro_done=False; self.intro_slide=0; self.intro_t=0.0
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type==pygame.QUIT: self.running=False
@@ -977,6 +978,40 @@ class Game:
         if self.shk>0: self.shk-=dt
         if self.ap_t>0: self.ap_t-=dt
         elif self.ap: self.ap=None
+
+
+    def _draw_drift_overlay(self):
+        if not self.show_drift: return
+        ov=pygame.Surface((SW,SH),pygame.SRCALPHA)
+        pygame.draw.rect(ov,(0,0,0,220),(0,0,SW,SH)); self.screen.blit(ov,(0,0))
+        pw,ph=680,520; px,py=(SW-pw)//2,(SH-ph)//2
+        pygame.draw.rect(self.screen,(10,15,35),(px,py,pw,ph),border_radius=15)
+        pygame.draw.rect(self.screen,C_GOLD,(px,py,pw,ph),2,border_radius=15)
+        t=self.fn["lg"].render("📜 漂流瓶故事",True,C_GOLD)
+        self.screen.blit(t,(px+pw//2-t.get_width()//2,py+15))
+        pygame.draw.line(self.screen,C_GOLD,(px+30,py+65),(px+pw-30,py+65),1)
+        found=sorted(self.p.pages_found)
+        y=py+80
+        if not found:
+            t=self.fn["sm"].render("还没有发现任何漂流瓶...",True,(120,120,120))
+            self.screen.blit(t,(px+pw//2-t.get_width()//2,py+ph//2-20))
+        for pid in found:
+            pg=DRIFT_BOTTLES[pid-1]
+            mood_c={"fear":C_WARNING,"hope":C_SUCCESS,"memory":C_GOLD,"peace":C_OCEAN}
+            col=mood_c.get(pg.mood,C_WHITE)
+            t=self.fn["md"].render(f"第{pid}章 {pg.title}",True,col)
+            self.screen.blit(t,(px+30,y)); y+=35
+            # Wrap text
+            words=pg.content.split("。"); line=""
+            for w in words:
+                if len(line+w)>52: t=self.fn["sm"].render(line,True,(180,180,180)); self.screen.blit(t,(px+30,y)); y+=24; line=w+"。"
+                else: line+=w+"。"
+            if line: t=self.fn["sm"].render(line,True,(180,180,180)); self.screen.blit(t,(px+30,y)); y+=28
+            y+=8
+        t=self.fn["xs"].render(f"已解锁: {len(self.p.pages_found)}/8",True,C_GOLD)
+        self.screen.blit(t,(px+pw//2-t.get_width()//2,py+ph-30))
+        self._btn(SW//2-60,py+ph-28,120,36,"关闭",(80,80,100),C_WHITE)
+        pygame.display.flip()
 
     def _draw(self):
         if self.state=="menu":
