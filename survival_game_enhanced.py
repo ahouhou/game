@@ -43,7 +43,7 @@ class Player:
     energy: int=100; max_energy: int=100; day: int=1; island_size: int=1
     weapon: Optional[str]=None; armor: Optional[str]=None
     exp: int=0; level: int=1
-    inventory: Dict=int; buildings: List=field(default_factory=list)
+    inventory: Dict=field(default_factory=dict); buildings: List=field(default_factory=list)
     achievements: List=field(default_factory=list)
     fish_count: int=0; enemy_kills: int=0; build_count: int=0
     def is_alive(self): return self.health>0
@@ -64,7 +64,7 @@ class Player:
         b=5
         for a,d in [("树叶衣",3),("兽皮甲",8),("贝壳甲",15),("海神甲",25)]:
             if self.armor==a: b+=d
-        if any(x.name=="防御墙" for x in self.buildings): b+=10
+        if any(b.name=="防御墙" for b in self.buildings): b+=10
         return b
 
 ITEMS={
@@ -201,6 +201,11 @@ class Game:
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
         self.show_inv=False; self.show_cft=False; self.show_ach=False; self.show_bld=False
         self.menu_btns=[("开始游戏",SW//2-120,SH//2+60,240,60,C_SUCCESS),("继续游戏",SW//2-120,SH//2+140,240,60,C_OCEAN),("退出游戏",SW//2-120,SH//2+220,240,60,C_WARNING)]
+        # ===== 视觉效果系统 =====
+        self.t=0.0; self.wave_t=0.0; self.cloud_t=0.0
+        self.clouds=[(random.uniform(0,SW),random.uniform(30,150),random.uniform(0.3,1.0),random.randint(80,200)) for _ in range(6)]
+        self.wave_offsets=[random.uniform(0,50) for _ in range(8)]
+        self.wind_leaf_t=0.0; self.wind_leaves=[]
     def _gen_slots(self):
         cx,cy=SW//2,SH//2+30
         return [(cx+dx,cy+dy) for dx,dy in [(0,0),(-80,60),(80,60),(-40,-60),(40,-60),(-120,0),(120,0)]]
@@ -395,28 +400,121 @@ class Game:
 
     # ---- Drawing ----
     def _bar(self,x,y,w,h,cur,mx,col):
-        pygame.draw.rect(self.screen,C_DARK,(x,y,w,h))
-        if mx>0: pygame.draw.rect(self.screen,col,(x,y,int(w*min(1,cur/mx)),h))
-        pygame.draw.rect(self.screen,C_WHITE,(x,y,w,h),1)
+        # 背景
+        pygame.draw.rect(self.screen,(0,0,0,180),(x-2,y-2,w+4,h+4),border_radius=6)
+        # 填充（渐变效果）
+        fill=int(w*min(1,max(0,cur/mx)))
+        if fill>0:
+            # 深色底层
+            dark_c=tuple(max(0,c-60) for c in col)
+            pygame.draw.rect(self.screen,dark_c,(x,y,w,h),border_radius=4)
+            # 亮色填充
+            for i in range(min(fill,h)):
+                frac=i/h
+                r=int(col[0]*(1-frac)+dark_c[0]*frac)
+                g=int(col[1]*(1-frac)+dark_c[1]*frac)
+                b=int(col[2]*(1-frac)+dark_c[2]*frac)
+                pygame.draw.line(self.screen,(r,g,b),(x,y+i),(x+fill,y+i))
+        # 边框
+        pygame.draw.rect(self.screen,C_WHITE,(x,y,w,h),1,border_radius=4)
+        # 光泽
+        shine_s=pygame.Surface((w,3),pygame.SRCALPHA)
+        pygame.draw.rect(shine_s,(255,255,255,40),(0,0,w,3))
+        self.screen.blit(shine_s,(x,y+1))
 
-    def _btn(self,x,y,w,h,text,bg,fg):
+    def _btn(self,x,y,w,h,text,bg,fg,hover=False):
+        # 光晕效果
+        glow=int(20 if not hover else 40)
+        glow_s=pygame.Surface((w+20,h+20),pygame.SRCALPHA)
+        glow_c=tuple(min(255,max(0,c)) for c in bg)
+        glow_c_alpha=tuple(list(glow_c)+[glow])
+        pygame.draw.rect(glow_s,glow_c_alpha,(8,8,w+4,h+4),border_radius=12)
+        self.screen.blit(glow_s,(x-10,y-10))
+        # 主按钮
+        # 渐变背景（通过多层半透明矩形模拟）
+        for i in range(3):
+            alpha=40-i*10
+            l_c=tuple(min(255,max(0,c+30-i*15)) for c in bg)
+            pygame.draw.rect(self.screen,l_c,(x+i,y+i,w-i*2,h-i*2),border_radius=8-i)
         pygame.draw.rect(self.screen,bg,(x,y,w,h),border_radius=8)
+        # 顶部高光
+        highlight_h=min(8,h//3)
+        hi_c=tuple(min(255,max(0,c+50)) for c in bg)
+        hi_s=pygame.Surface((w-4,highlight_h),pygame.SRCALPHA)
+        hi_alpha=tuple(list(hi_c)+[80])
+        pygame.draw.rect(hi_s,hi_alpha,(2,0,w-4,highlight_h),border_radius=4)
+        self.screen.blit(hi_s,(x+2,y+2))
+        # 边框
         pygame.draw.rect(self.screen,C_WHITE,(x,y,w,h),1,border_radius=8)
+        # 文字
         t=self.fn["sm"].render(text,True,fg)
         self.screen.blit(t,t.get_rect(center=(x+w//2,y+h//2)))
 
     def _draw_bg(self):
-        self.day_e+=0.004
-        t=(math.sin(self.day_e)+1)/2
-        r=int(C_OCEAN[0]*(1-t)+C_OCEAN_D[0]*t)
-        g=int(C_OCEAN[1]*(1-t)+C_OCEAN_D[1]*t)
-        b=int(C_OCEAN[2]*(1-t)+C_OCEAN_D[2]*t)
-        self.screen.fill((r,g,b)); self.night=t<0.3
+        self.day_e+=0.002; self.cloud_t+=0.008; self.wave_t+=0.03
+        t=(math.sin(self.day_e)+1)/2; self.night=t<0.25
+        # 天空渐变
+        sky_t=math.sin(self.day_e*0.5)
+        if self.night:
+            r0,g0,b0=10,10,30; r1,g1,b1=25,25,60
+        elif t>0.75:
+            r0,g0,b0=255,100,50; r1,g1,b1=255,60,30
+        else:
+            r0,g0,b0=int(135*(1-sky_t)+30*sky_t),int(211*(1-sky_t)+120*sky_t),int(235*(1-sky_t)+200*sky_t)
+            r1,g1,b1=25,118,210
+        for y in range(0,SH//2,3):
+            frac=y/(SH//2)
+            r=int(r0*(1-frac)+r1*frac); g=int(g0*(1-frac)+g1*frac); b=int(b0*(1-frac)+b1*frac)
+            pygame.draw.line(self.screen,(r,g,b),(0,y),(SW,y))
+        # 海洋渐变
+        for y in range(SH//2,SH,3):
+            frac=(y-SH//2)/(SH-SH//2)
+            r=int(25*(1-frac)+13*frac); g=int(118*(1-frac)+71*frac); b=int(210*(1-frac)+161*frac)
+            pygame.draw.line(self.screen,(r,g,b),(0,y),(SW,y))
+        # 动态波浪
+        for wi,woy in enumerate(self.wave_offsets):
+            wy=SH//2+wi*18+int(math.sin(self.wave_t+woy)*5)
+            points=[]
+            for x in range(0,SW+20,20):
+                y=wy+int(math.sin(x*0.015+self.wave_t*1.5+woy)*3)
+                points.append((x,y))
+            if len(points)>1:
+                for i in range(len(points)-1):
+                    alpha=max(30,180-wi*20)
+                    col=(255,255,255)
+                    pygame.draw.line(self.screen,col,points[i],points[i+1],1)
+        # 云朵
+        for cx,cy,cs,cw in self.clouds:
+            nx=cx+cs*0.3
+            if nx>SW+cw: nx=-cw
+            # 用椭圆绘制云朵
+            base_c=int(220*(1-t)+80*t)
+            cloud_c=(base_c,base_c,int(base_c*1.05))
+            for dx,dy,dr in [(0,0,cs*0.4),(cs*0.3,cs*0.1,cs*0.3),(cs*0.6,cs*0.05,cs*0.25),(cs*0.15,cs*0.15,cs*0.2)]:
+                pygame.draw.circle(self.screen,cloud_c,(int(nx+dx),int(cy+dy)),int(dr))
+            # 更新位置
+            for i,(ocx,ocy,ocs,ocw) in enumerate(self.clouds):
+                if ocx==cx: self.clouds[i]=(nx,cy,cs,cw)
+        # 星星（夜晚）
         if self.night:
             for sx,sy in self.stars:
-                alpha=random.uniform(0.3,1.0)
+                alpha=0.4+0.6*abs(math.sin(self.t*2+sx*0.1))
                 sc=tuple(int(v*alpha) for v in C_WHITE)
-                pygame.draw.circle(self.screen,sc,(sx,sy),1)
+                pygame.draw.circle(self.screen,sc,(sx,sy),1 if alpha<0.7 else 2)
+        # 月亮（夜晚）
+        if self.night:
+            mx,my=120,80
+            pygame.draw.circle(self.screen,(220,220,180),(mx,my),35)
+            pygame.draw.circle(self.screen,(15,15,35),(mx+5,my-3),35)
+        # 太阳（日间）
+        elif t>0.3 and t<0.8:
+            sun_y=int(60+t*30)
+            pygame.draw.circle(self.screen,(255,230,50),(SW-120,sun_y),40)
+            for i in range(8):
+                a=i*math.pi/4+self.t*0.3
+                ex=int(SW-120+math.cos(a)*55); ey=int(sun_y+math.sin(a)*55)
+                pygame.draw.line(self.screen,(255,220,0),(ex,ey),(int(SW-120+math.cos(a)*70),int(sun_y+math.sin(a)*70)),2)
+        self.t+=0.016
 
     def _draw_island(self):
         cx,cy=SW//2,SH//2+30; sz=300+(self.p.island_size-1)*30
@@ -664,6 +762,12 @@ class Game:
             t=self.fn["xs"].render("暂无存档",True,(100,100,100)); self.screen.blit(t,(SW//2-40,SH//2+165))
 
 
+
+    def _do_restart(self):
+        self.p=Player(); self.p.inventory={}
+        self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
+        self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
+        self.dis=[]; self.msgs=[]; self.parts=Parts(); self.ap=None
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type==pygame.QUIT: self.running=False
@@ -771,13 +875,6 @@ class Game:
             self._draw_island()
             self._combat_btns=[]
             self._draw_combat_ui()
-            # Handle combat button clicks
-            for event in pygame.event.get():
-                if event.type==pygame.MOUSEBUTTONDOWN:
-                    mx,my=event.pos
-                    for xp,yp,w,h,action in self._combat_btns:
-                        if xp<=mx<=xp+w and yp<=my<=yp+h:
-                            action()
         elif self.state=="game_over":
             self._draw_bg()
             t=self.fn["lg"].render("💀 游戲结束",True,C_WARNING)
