@@ -274,7 +274,8 @@ class Game:
         self.parts.burst(SW//2,SH//2+50,25,C_OCEAN,5,8)
         s=','.join(f'{i}x{n}' for i,n in c.items())
         self.add_msg(f'🎣 捕捞成功！获得: {s}'); self._check_ach()
-        if self.quest: self._check_quest('item',1)
+        if self.quest and self.quest.qtype=="collect" and self.quest.target in c:
+            self._check_quest('item',c.get(self.quest.target,0))
 
     def _do_explore(self):
         if self.pts<=0: self.add_msg('⚠ 没有行动点了！'); return
@@ -284,7 +285,8 @@ class Game:
                         {'布料':random.randint(1,2)},{'金属':random.randint(1,2)}])
         for i,n in f.items(): self.p.add(i,n)
         self.explore_count+=1
-        if self.quest: self._check_quest('explore',1)
+        if self.quest and self.quest.qtype=="collect" and self.quest.target in f:
+            self._check_quest('item',f.get(self.quest.target,0))
         self.parts.burst(SW//2,SH//2+50,20,C_GRASS,4,7); self._play('explore')
         s=','.join(f'{i}x{n}' for i,n in f.items()); self.add_msg(f'🗺 探索发现: {s}')
         if random.random()<.30:
@@ -396,8 +398,8 @@ class Game:
             Quest("combat","击败任务","击败3个敌人","敌人",3,{"经验":45}),
             Quest("combat","击败任务","击败鲨鱼","鲨鱼",1,{"经验":30,"金属":5}),
             Quest("combat","击败任务","击败海龙王","海龙王",1,{"经验":80}),
-            Quest("survive","生存任务","再存活3天","生存",d+3,{"经验":25}),
-            Quest("survive","生存任务","保持满饱食度2天","满饱食",2,{"经验":20,"体力":30}),
+            Quest("survive","生存任务","再存活3天","生存",self.p.day+3,{"经验":25}),
+            Quest("survive","生存任务","保持满饱食度2天","满饱食",2,{"经验":20}),
         ]
         self.quest=random.choice(pool)
         self.add_msg("📜 新任务："+self.quest.title+" - "+self.quest.desc)
@@ -412,7 +414,12 @@ class Game:
             if any(b.name==q.target for b in self.p.buildings):
                 q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
         elif q.qtype=="combat" and kind=="kill":
-            q.current+=amount
+            if self.p.enemy_kills>=q.target_count:
+                q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
+        elif q.qtype=="explore" and kind=="explore":
+            if isinstance(amount,tuple):
+                item,count=amount
+                if item==q.target: q.current+=count
             if q.current>=q.target_count:
                 q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
         elif q.qtype=="survive" and kind=="day":
@@ -424,11 +431,11 @@ class Game:
 
     def _reward_quest(self):
         if not self.quest: return
-        r=self.quest.reward; msg="🎁 任务奖励："
-        if "经验" in r: self.p.exp+=r["经验"]; msg+="经验+"+str(r["经验"])+" "
-        if "生命" in r: self.p.health=min(100,self.p.health+r["生命"]); msg+="生命+"+str(r["生命"])+" "
-        if "金属" in r: self.p.add("金属",r["金属"]); msg+="金属+"+str(r["金属"])
-        if "神秘果实" in r: self.p.add("神秘果实",r["神秘果实"]); msg+="神秘果实+"+str(r["神秘果实"])
+        rew=self.quest.reward; msg="🎁 任务奖励："
+        if "经验" in rew: self.p.exp+=rew["经验"]; msg+="经验+"+str(rew["经验"])+" "
+        if "生命" in rew: self.p.health=min(100,self.p.health+rew["生命"]); msg+="生命+"+str(rew["生命"])+" "
+        if "金属" in rew: self.p.add("金属",rew["金属"]); msg+="金属+"+str(rew["金属"])
+        if "神秘果实" in rew: self.p.add("神秘果实",rew["神秘果实"]); msg+="神秘果实+"+str(rew["神秘果实"])
         self.add_msg(msg); self.add_msg("🎉 请在右侧任务栏查看奖励！"); self.quest=None
 
     def _check_drift_bottle(self):
@@ -529,6 +536,7 @@ class Game:
             if any(b.name=='石屋' for b in self.p.buildings): dmg=int(dmg*.8)
             self.p.health=max(0,self.p.health-dmg); self.add_msg(f'⚠ {dt}来袭！受到 {dmg} 点伤害！'); self._play('hurt')
         self._check_ach()
+        if self.quest: self._check_quest("day",1)
         self._spawn_quest()
         self._check_drift_bottle()
         if self.p.day>=30: self.state='victory'
