@@ -44,7 +44,7 @@ class Player:
     weapon: Optional[str]=None; armor: Optional[str]=None
     exp: int=0; level: int=1
     inventory: Dict=field(default_factory=dict); buildings: List=field(default_factory=list)
-    achievements: List=field(default_factory=list)
+    achievements: List=field(default_factory=list); pages_found: List=field(default_factory=list); ending_unlocked: str=""
     fish_count: int=0; enemy_kills: int=0; build_count: int=0
     def is_alive(self): return self.health>0
     def add(self,i,n=1): self.inventory[i]=self.inventory.get(i,0)+n
@@ -200,6 +200,9 @@ class Game:
         self.build_slots=self._gen_slots()
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
         self.show_inv=False; self.show_cft=False; self.show_ach=False; self.show_bld=False
+        self.intro_slide=0; self.intro_t=0.0; self.intro_done=False
+        self.quest=None; self.drift_opened=False; self.page_to_show=None
+        self.explore_count=0; self.full_hunger_days=0
         self.menu_btns=[("开始游戏",SW//2-120,SH//2+60,240,60,C_SUCCESS),("继续游戏",SW//2-120,SH//2+140,240,60,C_OCEAN),("退出游戏",SW//2-120,SH//2+220,240,60,C_WARNING)]
         # ===== 视觉效果系统 =====
         self.t=0.0; self.wave_t=0.0; self.cloud_t=0.0
@@ -271,6 +274,7 @@ class Game:
         self.parts.burst(SW//2,SH//2+50,25,C_OCEAN,5,8)
         s=','.join(f'{i}x{n}' for i,n in c.items())
         self.add_msg(f'🎣 捕捞成功！获得: {s}'); self._check_ach()
+        if self.quest: self._check_quest('item',1)
 
     def _do_explore(self):
         if self.pts<=0: self.add_msg('⚠ 没有行动点了！'); return
@@ -279,6 +283,8 @@ class Game:
                         {'椰子':random.randint(1,3)},{'草药':random.randint(1,3)},
                         {'布料':random.randint(1,2)},{'金属':random.randint(1,2)}])
         for i,n in f.items(): self.p.add(i,n)
+        self.explore_count+=1
+        if self.quest: self._check_quest('explore',1)
         self.parts.burst(SW//2,SH//2+50,20,C_GRASS,4,7); self._play('explore')
         s=','.join(f'{i}x{n}' for i,n in f.items()); self.add_msg(f'🗺 探索发现: {s}')
         if random.random()<.30:
@@ -375,6 +381,135 @@ class Game:
                 self._play('hurt'); self.shk=.3
                 if not self.p.is_alive(): self.state='game_over'
 
+    def _spawn_quest(self):
+        if self.quest and not self.quest.completed: return
+        if random.random()>0.35: return
+        d=self.p.day
+        pool=[
+            Quest("collect","收集任务","收集5条鱼","鱼",5,{"经验":20}),
+            Quest("collect","收集任务","收集10块木材","木材",10,{"经验":15}),
+            Quest("collect","收集任务","收集3个神秘果实","神秘果实",3,{"经验":50,"生命":30}),
+            Quest("collect","收集任务","收集5块金属","金属",5,{"经验":30}),
+            Quest("build","建造任务","建造一个小木屋","小木屋",1,{"经验":40}),
+            Quest("build","建造任务","建造一个冶炼屋","冶炼屋",1,{"经验":60}),
+            Quest("build","建造任务","建造一个仓库","仓库",1,{"经验":30}),
+            Quest("combat","击败任务","击败3个敌人","敌人",3,{"经验":45}),
+            Quest("combat","击败任务","击败鲨鱼","鲨鱼",1,{"经验":30,"金属":5}),
+            Quest("combat","击败任务","击败海龙王","海龙王",1,{"经验":80}),
+            Quest("survive","生存任务","再存活3天","生存",d+3,{"经验":25}),
+            Quest("survive","生存任务","保持满饱食度2天","满饱食",2,{"经验":20,"体力":30}),
+        ]
+        self.quest=random.choice(pool)
+        self.add_msg("📜 新任务："+self.quest.title+" - "+self.quest.desc)
+
+    def _check_quest(self,kind,amount):
+        if not self.quest or self.quest.completed: return
+        q=self.quest
+        if q.qtype=="collect" and kind in ("item","check"):
+            if self.p.has(q.target)>=q.target_count:
+                q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
+        elif q.qtype=="build" and kind=="build":
+            if any(b.name==q.target for b in self.p.buildings):
+                q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
+        elif q.qtype=="combat" and kind=="kill":
+            q.current+=amount
+            if q.current>=q.target_count:
+                q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
+        elif q.qtype=="survive" and kind=="day":
+            if self.p.hunger>=80: self.full_hunger_days+=1
+            if q.target=="满饱食" and self.full_hunger_days>=q.target_count:
+                q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
+            if q.target=="生存" and self.p.day>=q.target_count:
+                q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
+
+    def _reward_quest(self):
+        if not self.quest: return
+        r=self.quest.reward; msg="🎁 任务奖励："
+        if "经验" in r: self.p.exp+=r["经验"]; msg+="经验+"+str(r["经验"])+" "
+        if "生命" in r: self.p.health=min(100,self.p.health+r["生命"]); msg+="生命+"+str(r["生命"])+" "
+        if "金属" in r: self.p.add("金属",r["金属"]); msg+="金属+"+str(r["金属"])
+        if "神秘果实" in r: self.p.add("神秘果实",r["神秘果实"]); msg+="神秘果实+"+str(r["神秘果实"])
+        self.add_msg(msg); self.quest=None
+
+    def _check_drift_bottle(self):
+        if self.drift_opened or self.p.day<2: return
+        if random.random()<0.08:
+            pg=random.choice(DRIFT_BOTTLES)
+            if pg.id not in self.p.pages_found:
+                self.p.pages_found.append(pg.id)
+                self.drift_opened=True; self.page_to_show=pg
+                self.add_msg("📜 发现了漂流瓶："+pg.title)
+
+    def _get_ending(self):
+        if self.p.health<=0: return ENDINGS["none"]
+        if self.p.has("三叉戟")>0 or self.p.has("海神甲")>0: return ENDINGS["legend"]
+        if len(self.p.buildings)>=5 and self.p.day>=25: return ENDINGS["survivor"]
+        if len(self.p.pages_found)>=5: return ENDINGS["memory"]
+        return ENDINGS["normal"]
+
+    def _draw_intro_screen(self):
+        self.intro_t+=0.016
+        if self.intro_t>6.0 and self.intro_slide<7:
+            self.intro_slide+=1; self.intro_t=0.0
+        if self.intro_t>5.0 and self.intro_slide>=7:
+            self.intro_done=True; self.state="menu"; return
+        t=self.day_e; bg_t=(math.sin(t)+1)/2
+        r=int(10*(1-bg_t)+25*bg_t); g=int(10*(1-bg_t)+71*bg_t); b=int(30*(1-bg_t)+161*bg_t)
+        self.screen.fill((r,g,b))
+        for sx,sy in self.stars:
+            alpha=0.4+0.6*abs(math.sin(self.t*2+sx*0.1))
+            sc=tuple(int(v*alpha) for v in C_WHITE)
+            pygame.draw.circle(self.screen,sc,(sx,sy),1)
+        pygame.draw.circle(self.screen,(220,220,180),(120,80),35)
+        if self.intro_slide<len(DRIFT_BOTTLES):
+            pg=DRIFT_BOTTLES[self.intro_slide]
+            mood_c={"fear":C_WARNING,"hope":C_SUCCESS,"memory":C_GOLD,"peace":C_OCEAN}
+            col=mood_c.get(pg.mood,C_WHITE)
+            ov=pygame.Surface((SW,SH//2+80),pygame.SRCALPHA)
+            pygame.draw.rect(ov,(0,0,0,210),(0,0,SW,SH//2+80))
+            self.screen.blit(ov,(0,SH//2-40))
+            pygame.draw.line(self.screen,col,(100,SH//2-20),(SW-100,SH//2-20),2)
+            t2=self.fn["md"].render(pg.title,True,col); self.screen.blit(t2,(SW//2-t2.get_width()//2,SH//2-10))
+            visible=int(self.intro_t*25)
+            vt=pg.content[:visible]
+            words=vt.split("。")
+            display=""; y=SH//2+30
+            for para in words:
+                for word in para.split("——"):
+                    if len(display+word)>58:
+                        t2=self.fn["sm"].render(display,True,C_WHITE); self.screen.blit(t2,(80,y)); y+=26; display=word+"——"
+                    else: display+=word+"——"
+            if display:
+                t2=self.fn["sm"].render(display,True,C_WHITE); self.screen.blit(t2,(80,y))
+            if self.intro_t>1.0:
+                t2=self.fn["xs"].render("点击任意键跳过",True,(100,100,100))
+                self.screen.blit(t2,(SW//2-t2.get_width()//2,SH-40))
+        pygame.display.flip()
+
+    def _draw_ending_screen(self):
+        end=self._get_ending()
+        title_text,desc_text,style=end[0],end[1],end[2]
+        col_map={"grey":(150,150,150),"gold":C_GOLD,"green":C_GRASS,"purple":C_PURPLE,"dark":(80,80,80)}
+        col=col_map.get(style,C_WHITE)
+        ov=pygame.Surface((SW,SH),pygame.SRCALPHA)
+        pygame.draw.rect(ov,(0,0,0,220),(0,0,SW,SH)); self.screen.blit(ov,(0,0))
+        pw,ph=700,480; px,py=(SW-pw)//2,(SH-ph)//2
+        pygame.draw.rect(self.screen,(20,20,40),(px,py,pw,ph),border_radius=20)
+        pygame.draw.rect(self.screen,col,(px,py,pw,ph),3,border_radius=20)
+        t2=self.fn["lg"].render(title_text,True,col); self.screen.blit(t2,(px+pw//2-t2.get_width()//2,py+30))
+        pygame.draw.line(self.screen,col,(px+60,py+85),(px+pw-60,py+85),2)
+        words=desc_text.split("。"); y=py+105; line=""
+        for word in words:
+            if len(line+word)>50: t2=self.fn["sm"].render(line,True,C_WHITE); self.screen.blit(t2,(px+60,y)); y+=28; line=word+"。"
+            else: line+=word+"。"
+        if line: t2=self.fn["sm"].render(line,True,C_WHITE); self.screen.blit(t2,(px+60,y)); y+=40
+        stats=["生存天数："+str(self.p.day),"捕捞次数："+str(self.p.fish_count),"击败敌人："+str(self.p.enemy_kills),"建造建筑："+str(len(self.p.buildings)),"解锁故事："+str(len(self.p.pages_found))+"/8","获得成就："+str(len(self.p.achievements))+"/7"]
+        t2=self.fn["md"].render("游戏数据",True,col); self.screen.blit(t2,(px+60,y)); y+=35
+        for s in stats: t2=self.fn["sm"].render(s,True,C_WHITE); self.screen.blit(t2,(px+60,y)); y+=28
+        self._btn(SW//2-80,py+ph-70,160,50,"重新开始",C_SUCCESS,C_WHITE)
+        self._go_restart_btn=[(SW//2-80,py+ph-70,160,50)]
+
+
     def _next_day(self):
         self.p.day+=1; self.pts=3
         if self.p.hunger<=0: self.p.health-=15; self.add_msg('⚠ 饥饿！生命值下降！')
@@ -393,6 +528,8 @@ class Game:
             if any(b.name=='石屋' for b in self.p.buildings): dmg=int(dmg*.8)
             self.p.health=max(0,self.p.health-dmg); self.add_msg(f'⚠ {dt}来袭！受到 {dmg} 点伤害！'); self._play('hurt')
         self._check_ach()
+        self._spawn_quest()
+        self._check_drift_bottle()
         if self.p.day>=30: self.state='victory'
         elif not self.p.is_alive(): self.state='game_over'
         self.add_msg(f'🌅 第 {self.p.day} 天开始了...')
@@ -768,6 +905,7 @@ class Game:
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
         self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
         self.dis=[]; self.msgs=[]; self.parts=Parts(); self.ap=None
+        self.quest=None; self.drift_opened=False; self.intro_done=False; self.intro_slide=0; self.intro_t=0.0
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type==pygame.QUIT: self.running=False
@@ -892,8 +1030,7 @@ class Game:
                     self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
                     self.dis=[]; self.msgs=[]; self.parts=Parts()
         elif self.state=="victory":
-            self._draw_bg()
-            t=self.fn["lg"].render("🎉 恭喜通关！",True,C_GOLD)
+            self._draw_ending_screen()
             self.screen.blit(t,t.get_rect(center=(SW//2,SH//2-100)))
             stats=["生存{} 天成功！".format(self.p.day),"捕捞:{} 死交:{} 建筑:{}".format(self.p.fish_count,self.p.enemy_kills,self.p.build_count),"成就: {}/7".format(len(self.p.achievements)),"","按 ESC 重新开始"]
             y=SH//2
@@ -912,10 +1049,47 @@ class Game:
     def run(self):
         while self.running:
             dt=self.clock.tick(FPS)/1000.0
+            if not self.intro_done:
+                self._draw_intro_screen()
+                for event in pygame.event.get():
+                    if event.type in (pygame.KEYDOWN,pygame.MOUSEBUTTONDOWN):
+                        self.intro_done=True; self.state="menu"
+                continue
             self._handle_events()
             if self.state in ("main","combat"): self._update(dt)
             self._draw()
         pygame.quit()
+
+
+
+class Quest:
+    def __init__(self, qt, title, desc, tgt, cnt, rew):
+        self.qtype=qt; self.title=title; self.desc=desc
+        self.target=tgt; self.target_count=cnt; self.reward=rew
+        self.current=0; self.completed=False
+
+class StoryPage:
+    def __init__(self, sid, title, content, mood):
+        self.id=sid; self.title=title; self.content=content; self.mood=mood
+
+DRIFT_BOTTLES=[
+    StoryPage(1,"第一章：醒来","我在一片黑暗中醒来。海浪的声音越来越清晰……睁开眼，发现自己躺在一片陌生的沙滩上。天空很蓝，但我感到一阵深深的恐惧——我在哪里？这是什么时代？我只记得船剧烈摇晃，然后就……失去了意识。","fear"),
+    StoryPage(2,"第一章：希望","我在沙滩上用漂流木搭了一个临时的庇护所。第一夜很冷，但至少我活了下来。我告诫自己：无论如何，都要活下去。在潮汐退去后的沙滩上，我发现了一些有用的东西——生活还要继续。","hope"),
+    StoryPage(3,"第一章：记忆","翻看口袋时，我找到了一张被海水浸泡过的照片。照片里是一个女人和一个大约五岁的男孩。他们是谁？为什么我会带着这张照片？记忆像碎片一样模糊……","memory"),
+    StoryPage(4,"第二章：第二十天","已经在这个岛上生活了二十天。我的木屋已经扩建了，甚至还有了一个冶炼的小火炉。但每天夜里，我都会做同样的梦——那个女人和男孩在远处向我招手，我却怎么也走不过去。","peace"),
+    StoryPage(5,"第二章：暴风雨","暴风雨来得毫无预兆。雷电交加，我躲在小木屋里瑟瑟发抖，听着外面的世界仿佛要崩塌。但这场风暴也带来了意想不到的礼物——海水冲来了一个密封的箱子，里面有一些工具和一本残缺的航海日志。","fear"),
+    StoryPage(6,"第三章：日志","日志的大部分页面已经被海水侵蚀，只剩下零星的片段。日志的最后一行写着：如果有人找到这个，请告诉我的家人，我一直在寻找他们。那是我的手写体……那是我的字迹？","memory"),
+    StoryPage(7,"第三章：真相","那个女人叫林雨晴。那个男孩叫小海。他们是我的家人。记忆像潮水一样涌回来——我是一名远洋船长，我的船在风暴中沉没了。但我是怎么来到这个岛的？为什么我独自一人？","hope"),
+    StoryPage(8,"终章：离去","第三十天清晨，海面上出现了一艘船的影子。我用篝火发出了信号。这三十天的经历改变了我——我找到了自己的过去，也找到了活下去的勇气。无论前方等待我的是什么，我都不再害怕。","peace"),
+]
+
+ENDINGS={
+    "normal":("普通结局 - 孤独的生还者","你成功在荒岛上生存了30天并获救。但那些记忆的碎片，始终没有拼凑完整。漂流瓶里的故事，成了你永远无法解开的谜。","grey"),
+    "memory":("记忆结局 - 父亲的归来","你成功在荒岛上生存了30天。找到了妻子林雨晴和儿子小海的照片后，你决心要活下去找到他们。在获救的那一刻，你发誓无论花多长时间，都要把他们找回来。","gold"),
+    "survivor":("生存结局 - 岛的主人","你在荒岛上建立了属于自己的王国。有建筑、有装备、有动物朋友。你选择留在这个岛上，成为了真正的岛主。这里就是你的家。","green"),
+    "legend":("传说结局 - 海神祝福","在第30天的夜晚，你获得了传说中的三叉戟和海神甲。海龙王的身影在月光下浮现——它是来祝福你的。你被送往了传说中的海底之城。","purple"),
+    "none":("沉默结局 - 无人知晓","你消失了。没有人在这片海域寻找你。但或许在某一天，会有人发现你留下的那些建筑残骸，猜想到曾经有一个人在这里生活过。","dark"),
+}
 
 if __name__=="__main__":
     Game().run()
