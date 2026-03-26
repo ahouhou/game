@@ -5,6 +5,7 @@ from config import *
 from data import *
 from models import Player, Quest, StoryPage
 from particles import Particles
+from sprites import get_sprites, PLAYER_ROWS, ENEMY_ROWS, EFFECT_ROWS, AnimState
 import renderer as R
 import ui
 from ui import Button
@@ -14,7 +15,7 @@ class Game:
         self.screen = pygame.display.set_mode((SW, SH))
         pygame.display.set_caption("荒岛求生 - Survival Island")
         self.clock = pygame.time.Clock()
-        ui.init_fonts(["microsoftyahei","pingfangsc","notosanscjk","arial"])
+        ui.init_fonts()
         self.reset()
 
     def reset(self):
@@ -64,6 +65,28 @@ class Game:
 
         # Particles
         self.parts = Particles()
+
+        # ── Sprite entities ──
+        self._sprites = get_sprites()
+        # Player sprite on island
+        self.player_x = SW * 0.4    # island center-ish
+        self.player_y = SH * 0.47
+        self.player_facing = 1      # 1=right, -1=left
+        self.player_anim_row = "idle_right"
+        self.player_anim = AnimState(self._sprites["player"],
+                                       row=PLAYER_ROWS["idle_right"], fps=6)
+        self.player_action = ""       # "" / "fish" / "walk" / "hurt" / "victory"
+        self.player_action_timer = 0.0
+
+        # Scene enemies (shown on island before combat)
+        self.scene_enemies = []       # [{name, x, y, hp, max_hp, anim}]
+        self.scene_enemy_spawn_timer = 0.0
+
+        # Floating damage / pickup numbers
+        self.floats = []             # [(text, x, y, vy, life, color)]
+
+        # Combat enemy sprite anim (persistent)
+        self.combat_enemy_anim = None
 
         # Visual timers
         self.day_e = 0.3
@@ -142,6 +165,10 @@ class Game:
         self._use_weapon_dur(1)
         self.msg(f"捕捞成功! 获得 {n} 条鱼")
         self.parts.burst(SW//2, SH//2, 20, C_OCEAN, 100)
+        self._add_float(f"+{n}鱼", SW//2, SH//3, C_OCEAN)
+        # Fish animation
+        self.player_anim.set_row(PLAYER_ROWS["fish"])
+        self.player_action = "fish"; self.player_action_timer = 0.8
         self._check_quest()
 
     def do_explore(self):
@@ -150,18 +177,46 @@ class Game:
         self.pts -= 1
         self.p.explore_count += 1
         self._use_weapon_dur(1)
+        # Walk animation
+        self.player_anim.set_row(PLAYER_ROWS["walk_right" if self.player_facing > 0 else "walk_left"])
+        self.player_action = "walk"; self.player_action_timer = 0.6
         # Find something
         item = random.choice(EXPLORE_ITEMS)
         n = random.randint(1, 3)
         self.p.add(item, n)
         self.msg(f"探索发现: {item} x{n}")
+        self._add_float(f"+{item}x{n}", self.player_x, self.player_y - 60, C_GRASS)
         self.parts.burst(SW//2, SH//2, 20, C_GRASS, 100)
-        # Random encounter
+        # Random encounter - spawn on island
         if random.random() < 0.30:
             ename = random.choice(EXPLORE_ENEMIES)
             ed = ENEMIES[ename]
-            self._start_combat(ename, ed)
+            self._spawn_island_enemy(ename, ed)
+            self.msg(f"发现 {ename}!")
         self._check_quest()
+
+    def _spawn_island_enemy(self, ename, edata):
+        """Spawn an enemy on the island scene (right side, approaching)."""
+        self.scene_enemies.append({
+            "name": ename,
+            "hp": edata.max_hp,
+            "max_hp": edata.max_hp,
+            "x": SW * 0.85,
+            "y": SH * 0.45,
+            "vx": -1.5,
+            "anim_row": ENEMY_ROWS.get(ename, 0),
+            "anim": AnimState(self._sprites["enemies"], row=ENEMY_ROWS.get(ename, 0), fps=4),
+        })
+
+    def _add_float(self, text, x, y, color):
+        """Add a floating number/text that rises and fades."""
+        self.floats.append({"text": text, "x": x, "y": y,
+                           "vy": -1.5, "life": 1.5, "color": color})
+
+    def _trigger_action(self, action, dur=0.8):
+        """Set player animation to action for dur seconds, then revert."""
+        self.player_action = action
+        self.player_action_timer = dur
 
     def do_eat(self):
         if self.p.has("鱼") < 1:
@@ -344,22 +399,24 @@ class Game:
         self.enemy_dfs = edata.dfs
         self.combat_log = [f"遭遇了 {ename}!"]
         self.state = "combat"
+        # Set enemy sprite animation
+        e_row = ENEMY_ROWS.get(ename, 0)
+        self.combat_enemy_anim = AnimState(self._sprites["enemies"], row=e_row, fps=4)
 
     def _combat_attack(self):
         dmg = max(1, self.p.patk - self.enemy_dfs + random.randint(-3, 3))
         self.enemy_hp -= dmg
         self.combat_log.append(f"你造成 {dmg} 点伤害!")
         self.parts.burst(700, 300, 15, C_HEALTH, 120)
+        self._add_float(f"-{dmg}", 720, 280, C_HEALTH)
         self._use_weapon_dur(2)
         if self.enemy_hp <= 0:
             self._combat_victory()
             return
-        # Enemy attacks back
         self._enemy_attack()
 
     def _combat_defend(self):
         self.combat_log.append("你选择防御!")
-        # Reduced enemy damage
         edmg = max(1, self.enemy_atk - self.p.pdef + random.randint(-3, 3))
         actual = max(0, edmg // 2)
         self.p.health = max(0, self.p.health - actual)
@@ -371,6 +428,10 @@ class Game:
         self.p.health = max(0, self.p.health - actual)
         self._use_armor_dur(2)
         self.combat_log.append(f"{self.enemy_name} 攻击! 你受到 {actual} 点伤害!")
+        self._add_float(f"-{actual}", 700, 450, C_HEALTH)
+        # Player hurt animation
+        self.player_anim.set_row(PLAYER_ROWS["hurt"])
+        self.player_action = "hurt"; self.player_action_timer = 0.8
         if self.p.health <= 0:
             self._combat_defeat()
 
@@ -615,6 +676,37 @@ class Game:
     def update(self, dt):
         self.t += dt
         self.parts.update(dt)
+
+        # ── Player sprite animation ──
+        self.player_anim.update(dt)
+        if self.player_action_timer > 0:
+            self.player_action_timer -= dt
+            if self.player_action_timer <= 0:
+                # Revert to idle
+                row = PLAYER_ROWS["idle_right" if self.player_facing > 0 else "idle_left"]
+                self.player_anim.set_row(row)
+
+        # ── Scene enemies movement ──
+        for e in self.scene_enemies[:]:
+            e["anim"].update(dt)
+            e["x"] += e["vx"] * dt * 60
+            if e["x"] < SW * 0.5 or e["x"] > SW * 0.95:
+                e["vx"] *= -1
+            e["_life"] = e.get("_life", 8.0) - dt
+            if e["_life"] <= 0:
+                self.scene_enemies.remove(e)
+
+        # ── Floating texts ──
+        for f in self.floats[:]:
+            f["y"] += f["vy"] * dt * 60
+            f["life"] -= dt
+            if f["life"] <= 0:
+                self.floats.remove(f)
+
+        # ── Combat enemy animation ──
+        if self.state == "combat" and self.combat_enemy_anim:
+            self.combat_enemy_anim.update(dt)
+
         # Messages decay
         new_msgs = []
         for text, life in self.msgs:
@@ -622,6 +714,7 @@ class Game:
             if life > 0:
                 new_msgs.append((text, life))
         self.msgs = new_msgs
+
         # Shake decay
         if self.shake > 0:
             self.shake -= dt
@@ -661,6 +754,12 @@ class Game:
         R.draw_clouds(self.screen, self.cloud_t, night)
         R.draw_weather(self.screen, self.weather, self.parts)
         R.draw_island(self.screen)
+
+        # ── Sprite entities ──
+        self._draw_player_sprite()
+        self._draw_scene_enemies()
+        self._draw_floating_texts()
+
         self.parts.draw(self.screen)
         R.draw_hud(self.screen, self.p, self.weather)
         R.draw_quest_info(self.screen, self.quest)
@@ -741,14 +840,68 @@ class Game:
         self._btns = btns
 
     def _draw_combat(self, mouse_pos):
-        ed = ENEMIES.get(self.enemy_name)
+        e_row = ENEMY_ROWS.get(self.enemy_name, 0)
         self._btns = R.draw_combat(
             self.screen, self.p.health, self.p.max_health,
             self.enemy_hp, self.enemy_max_hp, self.enemy_name,
             self.p.patk, self.p.pdef,
             self.enemy_atk, self.enemy_dfs,
-            self.combat_log, mouse_pos
+            self.combat_log, mouse_pos,
+            enemy_sprite=self._sprites["enemies"],
+            enemy_row=e_row,
+            enemy_anim=self.combat_enemy_anim
         )
+
+    # ────────── Sprite Drawing ──────────
+    def _draw_player_sprite(self):
+        """Draw player character sprite on the island."""
+        frame = self.player_anim.current_frame
+        fw, fh = frame.get_width(), frame.get_height()
+        x = int(self.player_x - fw // 2)
+        y = int(self.player_y - fh // 2)
+        self.screen.blit(frame, (x, y))
+
+        # Name tag
+        t = ui.font("xs").render("主角", True, C_GOLD)
+        self.screen.blit(t, (int(self.player_x - t.get_width() // 2), y - 20))
+
+    def _draw_scene_enemies(self):
+        """Draw enemies wandering on the island."""
+        for e in self.scene_enemies:
+            frame = e["anim"].current_frame
+            fw, fh = frame.get_width(), frame.get_height()
+            x = int(e["x"] - fw // 2)
+            y = int(e["y"] - fh // 2)
+            self.screen.blit(frame, (x, y))
+
+            # HP bar
+            ratio = e["hp"] / e["max_hp"] if e["max_hp"] > 0 else 0
+            bar_w = 80
+            bx = int(e["x"] - bar_w // 2)
+            by = y - 16
+            pygame.draw.rect(self.screen, (40, 40, 40), (bx, by, bar_w, 8), border_radius=3)
+            col = C_HEALTH if ratio > 0.5 else C_WARNING
+            if ratio > 0:
+                pygame.draw.rect(self.screen, col,
+                                (bx, by, int(bar_w * ratio), 8), border_radius=3)
+
+            # Name
+            t = ui.font("xs").render(e["name"], True, C_WARNING)
+            self.screen.blit(t, (int(e["x"] - t.get_width() // 2), y - 28))
+
+    def _draw_floating_texts(self):
+        """Draw floating damage/pickup numbers."""
+        for f in self.floats:
+            alpha = max(50, int(255 * f["life"] / 1.5))
+            col = f["color"]
+            # Dark outline
+            t_outline = ui.font("sm").render(f["text"], True, (0, 0, 0))
+            t_outline.set_alpha(alpha)
+            t_color = ui.font("sm").render(f["text"], True, col)
+            t_color.set_alpha(alpha)
+            ox = int(f["x"] - t_color.get_width() // 2)
+            self.screen.blit(t_outline, (ox + 1, int(f["y"]) + 1))
+            self.screen.blit(t_color, (ox, int(f["y"])))
 
     # ────────── Main Loop ──────────
     def run(self):
