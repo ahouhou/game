@@ -7,13 +7,24 @@ from config import C_TEXT_DIM, C_BORDER
 _fonts = {}
 
 def init_fonts(font_names=None):
-    """Call once after pygame.init()."""
+    """Initialize font dict. Must call before rendering. Returns dict."""
     global _fonts
-    _fonts["xs"]  = pygame.font.SysFont(font_names or ["microsoftyahei","pingfang","arial"], 14)
-    _fonts["sm"]  = pygame.font.SysFont(font_names or ["microsoftyahei","pingfang","arial"], 18)
-    _fonts["md"]  = pygame.font.SysFont(font_names or ["microsoftyahei","pingfang","arial"], 24)
-    _fonts["lg"]  = pygame.font.SysFont(font_names or ["microsoftyahei","pingfang","arial"], 36)
-    _fonts["xl"]  = pygame.font.SysFont(font_names or ["microsoftyahei","pingfang","arial"], 48)
+    # macOS Chinese font (lowercase from pygame.font.get_fonts())
+    CJK_FONTS = ["stheitimedium", "stheitilight", "pingfangsc", "notosanscjk_sc"]
+    FALLBACK  = ["arial", "liberationsans", "ubuntu", "dejavusans", None]
+    sizes = [("xs",14),("sm",18),("md",24),("lg",36),("xl",48)]
+    for sz, pt in sizes:
+        for name in (font_names or CJK_FONTS + FALLBACK):
+            try:
+                f = pygame.font.SysFont(name, pt)
+                t = f.render("荒", True, (255,255,255))
+                if t.get_size()[0] > 10:   # Chinese renders to wide surface
+                    _fonts[sz] = f
+                    break
+            except Exception:
+                pass
+        if sz not in _fonts:
+            _fonts[sz] = pygame.font.Font(None, pt)
 
 def font(size="sm"):
     return _fonts.get(size, _fonts["sm"])
