@@ -568,7 +568,7 @@ class Game:
     # ────────── Event Handling ──────────
     def handle_events(self):
         mouse_pos = pygame.mouse.get_pos()
-        self._btns = []
+        # Don't clear _btns here! It's filled by draw() and used here.
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -802,6 +802,7 @@ class Game:
     # ────────── Draw ──────────
     def draw(self):
         mouse_pos = pygame.mouse.get_pos()
+        self._btns = []  # Clear buttons at start of draw cycle
         night = math.sin(self.day_e) < -0.5
 
         if self.state == "intro":
