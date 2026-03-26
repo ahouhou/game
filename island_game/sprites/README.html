@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>精灵图预览 — 荒岛求生 v3.0</title>
+<style>
+  body { background: #1a1a2e; color: #eee; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  h1 { color: #ffd700; border-bottom: 1px solid #333; padding-bottom: 10px; }
+  h2 { color: #aaa; margin-top: 30px; border-left: 4px solid #ffd700; padding-left: 12px; }
+  .card { background: #16213e; border-radius: 12px; padding: 16px; margin: 12px 0; border: 1px solid #0f3460; }
+  .sprite-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .frame { text-align: center; background: #0a0f1a; border-radius: 6px; padding: 8px; min-width: 80px; }
+  .frame img { width: 96px; height: 120px; image-rendering: pixelated; display: block; margin: 0 auto 6px; border-radius: 3px; }
+  .frame small { font-size: 11px; color: #888; display: block; }
+  .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .spec { background: #0a1020; padding: 10px; border-radius: 6px; }
+  .spec .val { color: #ffd700; font-size: 20px; font-weight: bold; }
+  .spec .label { color: #888; font-size: 12px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
+  .green { background: #1a4; color: #fff; }
+  .orange { background: #a42; color: #fff; }
+  .blue { background: #248; color: #fff; }
+  .purple { background: #614; color: #fff; }
+</style>
+</head>
+<body>
+<h1>🎨 精灵图预览 — 荒岛求生 v3.0</h1>
+<p>程序化像素艺术 · 100% Pygame 绘制 · 无外部美术资源</p>
+
+<h2>🧑 主角 — 像素人物 (32×40 px)</h2>
+<div class="card">
+  <div class="sprite-row">
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_idle_r_0.png"><small>待机</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_walk_0.png"><small>行走①</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_walk_1.png"><small>行走②</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_walk_2.png"><small>行走③</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_walk_3.png"><small>行走④</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_fish_0.png"><small>捕捞①</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_fish_1.png"><small>捕捞②</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_hurt_0.png"><small>受伤①</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/player_hurt_1.png"><small>受伤②</small></div>
+  </div>
+  <p style="color:#888;font-size:13px">棕色背心男人 · 左右各4帧行走 · 捕捞举竿动作 · 受伤X_X表情后仰</p>
+</div>
+
+<h2>🦀 怪物 — 5种敌人</h2>
+<div class="card">
+  <div class="sprite-row">
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/crab.png"><small>海蟹</small><small style="color:#fa0">HP20 ATK5</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/shark.png"><small>鲨鱼</small><small style="color:#f60">HP50 ATK15</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/octopus.png"><small>巨型章鱼</small><small style="color:#a6f">HP80 ATK20</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/sea_snake.png"><small>海蛇</small><small style="color:#4ee">HP40 ATK25</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/dragon.png"><small>海龙王</small><small style="color:#ffd700">HP150 ATK35</small></div>
+  </div>
+  <p style="color:#888;font-size:13px">各2帧待机动画 · Boss带三叉戟 · 海蛇波浪形身体</p>
+</div>
+
+<h2>✨ 特效动画</h2>
+<div class="card">
+  <div class="sprite-row">
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/attack.png"><small>攻击闪光</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/hurt.png"><small>受伤红X</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/victory.png"><small>胜利星星</small></div>
+  </div>
+</div>
+
+<h2>🎁 装饰物</h2>
+<div class="card">
+  <div class="sprite-row">
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/boat.png"><small>木筏</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/campfire.png"><small>篝火</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/treasure.png"><small>宝箱</small></div>
+    <div class="frame"><img src="https://raw.githubusercontent.com/ahouhou/game/master/island_game/sprites/fish_splash.png"><small>鱼跃水花</small></div>
+  </div>
+</div>
+
+<h2>技术规格</h2>
+<div class="card">
+  <div class="specs">
+    <div class="spec"><div class="val">32×40</div><div class="label">原始像素尺寸</div></div>
+    <div class="spec"><div class="val">3x</div><div class="label">显示放大倍数</div></div>
+    <div class="spec"><div class="val">96×120</div><div class="label">显示尺寸 (px)</div></div>
+    <div class="spec"><div class="val">5</div><div class="label">怪物种类</div></div>
+    <div class="spec"><div class="val">8</div><div class="label">主角动画帧</div></div>
+    <div class="spec"><div class="val">100%</div><div class="label">程序化生成</div></div>
+  </div>
+  <p style="color:#555;font-size:12px;margin-top:12px">
+    文件: <code>island_game/sprites/</code> | 
+    生成器: <code>generate_sprites.py</code> |
+    GitHub: github.com/ahouhou/game/tree/master/island_game/sprites
+  </p>
+</div>
+
+<h2>下一步</h2>
+<div class="card">
+  <p>精灵图已生成完毕，下一步将集成到游戏引擎中，实现：</p>
+  <ul style="color:#aaa">
+    <li>主角在岛屿场景中移动、捕捞动画</li>
+    <li>敌人出现在场景中（不是直接进战斗框）</li>
+    <li>战斗时显示精灵动画 + 伤害数字</li>
+    <li>岛屿装饰物（篝火、宝箱、木筏）</li>
+    <li>探索时角色移动动画</li>
+  </ul>
+</div>
+</body>
+</html>
