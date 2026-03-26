@@ -72,11 +72,14 @@ class Game:
         self.player_x = SW * 0.4    # island center-ish
         self.player_y = SH * 0.47
         self.player_facing = 1      # 1=right, -1=left
-        self.player_anim_row = "idle_right"
         self.player_anim = AnimState(self._sprites["player"],
                                        row=PLAYER_ROWS["idle_right"], fps=6)
         self.player_action = ""       # "" / "fish" / "walk" / "hurt" / "victory"
         self.player_action_timer = 0.0
+        # Movement
+        self.keys_pressed = set()
+        self.player_vx = 0.0
+        self.player_vy = 0.0
 
         # Scene enemies (shown on island before combat)
         self.scene_enemies = []       # [{name, x, y, hp, max_hp, anim}]
@@ -567,6 +570,13 @@ class Game:
                 self.running = False
                 return
 
+            if event.type in (pygame.KEYDOWN, pygame.KEYUP):
+                # Track held keys for smooth movement
+                if event.type == pygame.KEYDOWN:
+                    self.keys_pressed.add(event.key)
+                else:
+                    self.keys_pressed.discard(event.key)
+
             if event.type == pygame.KEYDOWN:
                 if self.state == "intro":
                     self.intro_done = True
@@ -685,6 +695,67 @@ class Game:
                 # Revert to idle
                 row = PLAYER_ROWS["idle_right" if self.player_facing > 0 else "idle_left"]
                 self.player_anim.set_row(row)
+
+        # ── Player movement (keyboard) ──
+        if self.state == "main" and self.overlay is None and not self.player_action:
+            SPEED = 200.0   # pixels per second
+            dx = dy = 0.0
+            if self.keys_pressed:
+                if self.keys_pressed.intersection({pygame.K_LEFT, pygame.K_a, pygame.K_KP4}):
+                    dx -= 1; self.player_facing = -1
+                if self.keys_pressed.intersection({pygame.K_RIGHT, pygame.K_d, pygame.K_KP6}):
+                    dx += 1; self.player_facing = 1
+                if self.keys_pressed.intersection({pygame.K_UP, pygame.K_w, pygame.K_KP8}):
+                    dy -= 1
+                if self.keys_pressed.intersection({pygame.K_DOWN, pygame.K_s, pygame.K_KP2}):
+                    dy += 1
+            # Normalize diagonal
+            if dx and dy:
+                dx *= 0.707; dy *= 0.707
+            if dx or dy:
+                row = PLAYER_ROWS["walk_right" if self.player_facing > 0 else "walk_left"]
+                self.player_anim.set_row(row)
+            else:
+                row = PLAYER_ROWS["idle_right" if self.player_facing > 0 else "idle_left"]
+                if self.player_anim.row != row:
+                    self.player_anim.set_row(row)
+
+            # Apply velocity with delta time
+            new_x = self.player_x + dx * SPEED * dt
+            new_y = self.player_y + dy * SPEED * dt
+
+            # ── Island boundary collision ──
+            # Grass area: roughly x=[80,1320], y=[~250, ~550] (top is SH*0.42, bottom is SH*0.58)
+            # Use screen fraction bounds
+            MIN_X, MAX_X = 80, 1320
+            MIN_Y, MAX_Y = int(SH * 0.37), int(SH * 0.56)
+
+            # Try X
+            if MIN_X <= new_x <= MAX_X:
+                # Soft boundary check - push away from edge
+                if new_x < MIN_X + 20:
+                    new_x = MIN_X + 20
+                elif new_x > MAX_X - 20:
+                    new_x = MAX_X - 20
+                self.player_x = new_x
+            # Try Y
+            if MIN_Y <= new_y <= MAX_Y:
+                self.player_y = new_y
+
+            # ── Enemy contact collision ──
+            PW, PH = 96, 120   # player sprite size
+            for e in self.scene_enemies[:]:
+                ex, ey = e["x"], e["y"]
+                dist = ((self.player_x - ex) ** 2 + (self.player_y - ey) ** 2) ** 0.5
+                if dist < (PW + 90) * 0.5:   # half-width overlap threshold
+                    # Trigger combat!
+                    from data import ENEMIES
+                    ed = ENEMIES.get(e["name"])
+                    if ed:
+                        self._start_combat(e["name"], ed)
+                        self.msg(f"遭遇 {e['name']}！进入战斗！")
+                    self.scene_enemies.remove(e)
+                    break
 
         # ── Scene enemies movement ──
         for e in self.scene_enemies[:]:
