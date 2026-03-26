@@ -7,6 +7,7 @@ from models import Player, Quest, StoryPage
 from particles import Particles
 import renderer as R
 import ui
+from ui import Button
 
 class Game:
     def __init__(self):
