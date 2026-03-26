@@ -1,30 +1,39 @@
 """UI helper: Button widget + progress bar + panel."""
 
-import pygame
+import os, pygame
 from config import C_TEXT_DIM, C_BORDER
+
+# Font path — bundled Noto Sans SC for cross-platform CJK support
+FONT_FILE = os.path.join(os.path.dirname(__file__), "fonts", "NotoSansSC.ttf")
 
 # Need fonts globally; set by Game.__init__
 _fonts = {}
 
-def init_fonts(font_names=None):
-    """Initialize font dict. Must call before rendering. Returns dict."""
+def init_fonts():
+    """Load bundled Noto Sans SC font. Falls back to system if unavailable."""
     global _fonts
-    # macOS Chinese font (lowercase from pygame.font.get_fonts())
-    CJK_FONTS = ["stheitimedium", "stheitilight", "pingfangsc", "notosanscjk_sc"]
-    FALLBACK  = ["arial", "liberationsans", "ubuntu", "dejavusans", None]
-    sizes = [("xs",14),("sm",18),("md",24),("lg",36),("xl",48)]
-    for sz, pt in sizes:
-        for name in (font_names or CJK_FONTS + FALLBACK):
+    sizes = {"xs": 14, "sm": 18, "md": 24, "lg": 36, "xl": 48}
+    if os.path.exists(FONT_FILE):
+        for sz, pt in sizes.items():
             try:
-                f = pygame.font.SysFont(name, pt)
-                t = f.render("荒", True, (255,255,255))
-                if t.get_size()[0] > 10:   # Chinese renders to wide surface
-                    _fonts[sz] = f
-                    break
+                _fonts[sz] = pygame.font.Font(FONT_FILE, pt)
             except Exception:
-                pass
-        if sz not in _fonts:
-            _fonts[sz] = pygame.font.Font(None, pt)
+                _fonts[sz] = pygame.font.Font(None, pt)
+    else:
+        # Fallback: try system CJK fonts
+        CJK_NAMES = ["stheitimedium","stheitilight","pingfangsc","notosanscjk_sc"]
+        SYS_NAMES = ["arial","liberationsans","ubuntu","dejavusans",None]
+        for sz, pt in sizes.items():
+            for name in CJK_NAMES + SYS_NAMES:
+                try:
+                    f = pygame.font.SysFont(name, pt)
+                    t = f.render("荒", True, (255,255,255))
+                    if t.get_size()[0] > 10:
+                        _fonts[sz] = f; break
+                except Exception:
+                    pass
+            if sz not in _fonts:
+                _fonts[sz] = pygame.font.Font(None, pt)
 
 def font(size="sm"):
     return _fonts.get(size, _fonts["sm"])
