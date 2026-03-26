@@ -879,10 +879,7 @@ class Game:
             if item in self.p.dur:
                 ds=str(self.p.dur[item]); dc=C_SUCCESS if self.p.dur[item]>15 else C_HUNGER if self.p.dur[item]>5 else C_HEALTH
                 t=self.fn["xs"].render("("+ds+")",True,dc); self.screen.blit(t,(x+38,y+22))
-        if item in ITEM_INFO:
-            t=self.fn["xs"].render(ITEM_INFO[item][:30],True,(140,140,140)); self.screen.blit(t,(x+80,y+4))
-            t=self.fn["xs"].render("[{}]".format(dtype),True,(150,150,150)); self.screen.blit(t,(x+38,y+24))
-            x+=200
+
             if x>pw+px-200:
                 x=px+20; y+=55
         t=self.fn["sm"].render("按 ESC 关闭",True,(150,150,150)); self.screen.blit(t,(px+pw-130,py+ph-35))
