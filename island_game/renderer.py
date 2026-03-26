@@ -16,30 +16,49 @@ def trigger_ach_popup(name, desc):
 
 
 # ────────────────── Background ──────────────────
-def draw_sky(surface, t, night_mode):
-    if night_mode:
-        r0,g0,b0 = 8,8,25; r1,g1,b1 = 20,20,55
-    else:
-        r0,g0,b0 = 80,170,230; r1,g1,b1 = 25,110,200
+def draw_sky(surface, t, night_mode, day_progress=0.5):
+    """Draw sky with time-of-day coloring.
+    day_progress: 0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk, 1.0=midnight
+    """
+    # Interpolate sky colors based on time of day
+    if day_progress < 0.25:  # midnight to dawn
+        frac = day_progress / 0.25
+        r0, g0, b0 = 8, 8, 25
+        r1, g1, b1 = int(80*frac), int(120*frac), int(180*frac)
+    elif day_progress < 0.5:  # dawn to noon
+        frac = (day_progress - 0.25) / 0.25
+        r0, g0, b0 = 80, 120, 180
+        r1, g1, b1 = int(80+20*frac), int(170+10*frac), int(230+20*frac)
+    elif day_progress < 0.75:  # noon to dusk
+        frac = (day_progress - 0.5) / 0.25
+        r0, g0, b0 = int(100-20*frac), int(180-60*frac), int(250-50*frac)
+        r1, g1, b1 = int(45+155*frac), int(110+100*frac), int(200+55*frac)
+    else:  # dusk to midnight
+        frac = (day_progress - 0.75) / 0.25
+        r0, g0, b0 = int(80-72*frac), int(50-42*frac), int(150-125*frac)
+        r1, g1, b1 = int(200-180*frac), int(210-190*frac), int(255-230*frac)
+
     for y in range(0, SH//2 + 30, 4):
         frac = y / (SH//2 + 30)
         r = int(r0*(1-frac) + r1*frac)
         g = int(g0*(1-frac) + g1*frac)
         b = int(b0*(1-frac) + b1*frac)
         pygame.draw.line(surface, (r, g, b), (0, y), (SW, y))
-    # Sun
-    if not night_mode:
+
+    # Sun/Moon based on time
+    if 0.2 < day_progress < 0.8:  # Sun visible during day
+        sun_y = 75 + int(math.sin((day_progress - 0.2) / 0.6 * math.pi) * 100)
         pulse = math.sin(t * 2) * 5
-        pygame.draw.circle(surface, (255, 230, 60), (SW - 110, 75 + int(pulse)), 38)
+        pygame.draw.circle(surface, (255, 230, 60), (SW - 110, sun_y + int(pulse)), 38)
         for i in range(8):
             a = i * math.pi / 4 + t * 0.4
-            ex = int(SW-110 + math.cos(a)*55); ey = int(75 + math.sin(a)*55)
+            ex = int(SW-110 + math.cos(a)*55); ey = int(sun_y + math.sin(a)*55)
             pygame.draw.line(surface, (255,200,0), (ex,ey),
-                             (int(SW-110+math.cos(a)*68), int(75+math.sin(a)*68)), 2)
-    # Moon
-    else:
-        pygame.draw.circle(surface, (220,215,180), (110,70), 34)
-        pygame.draw.circle(surface, (18,18,35), (120,64), 34)
+                             (int(SW-110+math.cos(a)*68), int(sun_y+math.sin(a)*68)), 2)
+    else:  # Moon at night
+        moon_y = 70 + int(math.sin((day_progress - 0.75) / 0.5 * math.pi) * 80) if day_progress > 0.75 else 70
+        pygame.draw.circle(surface, (220,215,180), (110, moon_y), 34)
+        pygame.draw.circle(surface, (int(r0*0.5), int(g0*0.5), int(b0*0.5)), (120, moon_y-6), 34)
 
 
 def draw_stars(surface, t):
@@ -328,7 +347,7 @@ def draw_quest_log(surface, qlog, quest, mouse_pos=None):
 
 # ────────────────── Combat UI ──────────────────
 def draw_combat(surface, php, pmhp, ehp, emhp, ename, patk, pdef, eatk, edfs, clog,
-                mouse_pos=None, enemy_sprite=None, enemy_row=0, enemy_anim=None):
+                mouse_pos=None, enemy_sprite=None, enemy_row=0, enemy_anim=None, enemy_hit_flash=0.0):
     for y in range(0, SH//2, 4):
         f = y / (SH//2)
         pygame.draw.line(surface,
@@ -349,6 +368,14 @@ def draw_combat(surface, php, pmhp, ehp, emhp, ename, patk, pdef, eatk, edfs, cl
         ef = pygame.transform.scale(ef, (ef.get_width()*2, ef.get_height()*2))
         sprite_x = px + 80 - ef.get_width() // 2
         sprite_y = py + ph//2 - ef.get_height() // 2 + 20
+        
+        # Hit flash: white overlay when damaged
+        if enemy_hit_flash > 0:
+            flash_alpha = int(255 * (enemy_hit_flash / 0.15))
+            flash = pygame.Surface(ef.get_size(), pygame.SRCALPHA)
+            flash.fill((255, 255, 255, flash_alpha))
+            ef.blit(flash, (0, 0))
+        
         surface.blit(ef, (sprite_x, sprite_y))
 
     draw_bar(surface, px+50, py+145, pw-100, 28, php, pmhp, C_SUCCESS)
