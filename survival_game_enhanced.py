@@ -595,7 +595,7 @@ class Game:
         if random.random()<0.3:
             self.weather=random.choice(["sunny","cloudy","rainy","stormy","foggy"])
         if self.weather in ("rainy","stormy","foggy"):
-            self.parts.rain(SW//2,0,50,C_OCEAN,4,5) if self.weather=="rainy" else None
+            self.parts.rain(SW//2,0,50,C_OCEAN) if self.weather=="rainy" else None
         self.tip_msg=random.choice([
             "提示: 冶炼屋可以自动修复装备!","提示: 瞭望塔减少灾害发生率!","提示: 防御墙可以减少伤害!","提示: 满饱食度完成任务更快!","提示: 多探索可以发现更多漂流瓶!","提示: 高级装备有更长的耐久度!","提示: 三叉戟是传说级武器!","提示: 收集8页故事可解锁记忆结局!"
         ])
@@ -1154,7 +1154,7 @@ class Game:
             surf=self.screen.copy() if ox or oy else self.screen
             self._draw_bg()
             if self.weather in ("rainy","stormy"):
-                for _ in range(5): self.parts.rain(random.randint(0,SW),0,20,C_OCEAN if self.weather=="rainy" else (130,130,180),7,3)
+                for _ in range(5): self.parts.rain(random.randint(0,SW),0,20,C_OCEAN if self.weather=="rainy" else (130,130,180))
             self._draw_island()
             for d in self.dis: d.draw(surf)
             self.parts.draw(surf)
