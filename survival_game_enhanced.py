@@ -205,7 +205,16 @@ class Game:
         self.intro_slide=0; self.intro_t=0.0; self.intro_done=False
         self.quest=None; self.drift_opened=False; self.page_to_show=None
         self.explore_count=0; self.full_hunger_days=0; self.show_drift=False
+        self.show_quest_log=False; self.quest_log=[]
+        self.weather='sunny'; self.tip_msg=''
         self.menu_btns=[("开始游戏",SW//2-120,SH//2+60,240,60,C_SUCCESS),("继续游戏",SW//2-120,SH//2+140,240,60,C_OCEAN),("退出游戏",SW//2-120,SH//2+220,240,60,C_WARNING)]
+        self.save_slots={1:None,2:None,3:None}; self._load_slot_list()
+        self.weather="sunny"; self.tips_seen=[]; self.tip_msg=""
+        self.quest_log=[]; self.show_quest_log=False
+        for i in range(1,4):
+            sd=self.save_slots.get(i)
+            t=self.fn["xs"].render(f"Slot{i}:Day{sd}" if sd else f"Slot{i}:Empty",True,C_SUCCESS if sd else (80,80,100))
+            self.screen.blit(t,(SW//2-60,SH//2+30+i*22))
         # ===== 视觉效果系统 =====
         self.t=0.0; self.wave_t=0.0; self.cloud_t=0.0
         self.clouds=[(random.uniform(0,SW),random.uniform(30,150),random.uniform(0.3,1.0),random.randint(80,200)) for _ in range(6)]
@@ -229,6 +238,16 @@ class Game:
             try: self.snd[n].play()
             except: pass
     def add_msg(self,t,d=3.0): self.msgs.append((t,d))
+    def _load_slot_list(self):
+        for i in range(1,4):
+            path=f"save{i}.json"
+            if os.path.exists(path):
+                try:
+                    with open(path) as f: d=json.load(f)
+                    self.save_slots[i]=d.get("p",{}).get("day",0)
+                except: self.save_slots[i]=None
+            else: self.save_slots[i]=None
+
     def save(self):
         try:
             d={"p":self.p.__dict__,"pts":self.pts,"night":self.night}
@@ -429,6 +448,7 @@ class Game:
         if not self.quest or self.quest.completed: return
         q=self.quest
         if q.qtype=="collect" and kind in ("item","check"):
+            self.quest_log.append(("进行中",q.title,q.desc))
             if self.p.has(q.target)>=q.target_count:
                 q.completed=True; self.add_msg("✅ 任务完成："+q.title+"！"); self._reward_quest()
         elif q.qtype=="build" and kind=="build":
@@ -493,6 +513,11 @@ class Game:
             alpha=0.4+0.6*abs(math.sin(self.t*2+sx*0.1))
             sc=tuple(int(v*alpha) for v in C_WHITE)
             pygame.draw.circle(self.screen,sc,(sx,sy),1)
+        # Weather icon
+        wicon={"sunny":"[SUN]","cloudy":"[CLOUD]","rainy":"[RAIN]","stormy":"[STORM]","foggy":"[FOG]"}
+        wcol={"sunny":C_GOLD,"cloudy":(180,180,180),"rainy":C_OCEAN,"stormy":(100,100,150),"foggy":(150,150,170)}
+        t=self.fn["xs"].render(wicon.get(self.weather,""),True,wcol.get(self.weather,C_WHITE))
+        self.screen.blit(t,(SW-90,18))
         pygame.draw.circle(self.screen,(220,220,180),(120,80),35)
         if self.intro_slide<len(DRIFT_BOTTLES):
             pg=DRIFT_BOTTLES[self.intro_slide]
@@ -567,10 +592,19 @@ class Game:
         self._check_ach()
         if self.quest: self._check_quest("day",1)
         self._spawn_quest()
+        if random.random()<0.3:
+            self.weather=random.choice(["sunny","cloudy","rainy","stormy","foggy"])
+        if self.weather in ("rainy","stormy","foggy"):
+            self.parts.rain(SW//2,0,50,C_OCEAN,4,5) if self.weather=="rainy" else None
+        self.tip_msg=random.choice([
+            "提示: 冶炼屋可以自动修复装备!","提示: 瞭望塔减少灾害发生率!","提示: 防御墙可以减少伤害!","提示: 满饱食度完成任务更快!","提示: 多探索可以发现更多漂流瓶!","提示: 高级装备有更长的耐久度!","提示: 三叉戟是传说级武器!","提示: 收集8页故事可解锁记忆结局!"
+        ])
+        if self.tip_msg not in self.tips_seen: self.tips_seen.append(self.tip_msg)
         self._check_drift_bottle()
         if self.p.day>=30: self.state='victory'
         elif not self.p.is_alive(): self.state='game_over'
         self.add_msg(f'🌅 第 {self.p.day} 天开始了...')
+        if self.tip_msg: self.add_msg('TIP: '+self.tip_msg)
 
 
     # ---- Drawing ----
@@ -819,6 +853,8 @@ class Game:
         else:
             t=self.fn["xs"].render(f'A:{ar[:2]}',True,(100,100,100))
         self.screen.blit(t,(135,SH-197))
+        self._btn(395,SH-200,140,55,"Q 日志" if self.quest else "Q --",(40,30,60) if self.quest else (30,30,40),C_WHITE)
+        self._btn(545,SH-200,140,55,"Q 日志",(40,30,60),C_WHITE)
         self._btn(235,SH-200,160,55,"📋 托盘",C_DARK,C_WHITE)
 
 
@@ -843,6 +879,8 @@ class Game:
             if item in self.p.dur:
                 ds=str(self.p.dur[item]); dc=C_SUCCESS if self.p.dur[item]>15 else C_HUNGER if self.p.dur[item]>5 else C_HEALTH
                 t=self.fn["xs"].render("("+ds+")",True,dc); self.screen.blit(t,(x+38,y+22))
+        if item in ITEM_INFO:
+            t=self.fn["xs"].render(ITEM_INFO[item][:30],True,(140,140,140)); self.screen.blit(t,(x+80,y+4))
             t=self.fn["xs"].render("[{}]".format(dtype),True,(150,150,150)); self.screen.blit(t,(x+38,y+24))
             x+=200
             if x>pw+px-200:
@@ -964,6 +1002,9 @@ class Game:
         self.p.add("木材",15); self.p.add("石头",8); self.p.add("鱼",3); self.p.add("绳索",3)
         self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
         self.dis=[]; self.msgs=[]; self.parts=Parts(); self.ap=None
+        self.weather="sunny"; self.rain_particles=[]
+        self.tips_seen=[]; self.tip_msg=""
+        self.quest_log=[]; self.show_quest_log=False
         self.p.pages_found=[]; self.p.ending_unlocked=""; self.quest=None; self.show_drift=False
         self.p.weapon="木棍"; self.p.dur={"木棍":30}; self.drift_opened=False; self.intro_done=False; self.intro_slide=0; self.intro_t=0.0
     def _handle_events(self):
@@ -1000,7 +1041,8 @@ class Game:
                             else: self.state="main"
                 elif self.state=="main":
                     # Bottom action buttons
-                    if SH-130<=my<=SH-20:
+                    # 主按钮行: y=SH-115, h=50 → 范围 SH-115~SH-65
+                    if SH-115<=my<=SH-65:
                         if 30<=mx<=150: self._do_fish()
                         elif 165<=mx<=285: self._do_explore()
                         elif 300<=mx<=420: self._do_eat()
@@ -1010,7 +1052,11 @@ class Game:
                         elif 840<=mx<=960: self.show_ach=True
                         elif 975<=mx<=1095: self.save()
                         elif 1110<=mx<=1230: self._next_day()
-                        elif 30<=mx<=190 and SH-210<=my<=SH-145: self.show_inv=not self.show_inv
+                    # 第二行按钮: y=SH-200, h=55 → 范围 SH-200~SH-145
+                    if SH-200<=my<=SH-145:
+                        if 235<=mx<=395: self.show_inv=not self.show_inv  # 托盘
+                        elif 395<=mx<=535: self.show_quest_log=not self.show_quest_log  # Q日志1
+                        elif 545<=mx<=685: self.show_quest_log=True  # Q日志2
                     # Craft overlay buttons
                     if self.show_cft:
                         pw,ph=700,500; px,py=(SW-pw)//2,(SH-ph)//2
@@ -1039,8 +1085,35 @@ class Game:
         elif self.ap: self.ap=None
 
 
+    def _draw_quest_log_overlay(self):
+        if not self.show_quest_log: return
+        ov=pygame.Surface((SW,SH),pygame.SRCALPHA)
+        pygame.draw.rect(ov,(0,0,0,200),(0,0,SW,SH)); self.screen.blit(ov,(0,0))
+        pw,ph=550,500; px,py=(SW-pw)//2,(SH-ph)//2
+        pygame.draw.rect(self.screen,(10,15,40),(px,py,pw,ph),border_radius=15)
+        pygame.draw.rect(self.screen,C_GOLD,(px,py,pw,ph),2,border_radius=15)
+        t=self.fn["lg"].render("Q 任务日志",True,C_GOLD); self.screen.blit(t,(px+pw//2-t.get_width()//2,py+15))
+        pygame.draw.line(self.screen,C_GOLD,(px+30,py+65),(px+pw-30,py+65),1)
+        y=py+80
+        if not self.quest_log:
+            t=self.fn["sm"].render("暂无任务记录...",True,(120,120,120)); self.screen.blit(t,(px+pw//2-t.get_width()//2,py+ph//2))
+        for status,title,desc in self.quest_log[-10:]:
+            col=C_SUCCESS if status=="已完成" else C_HUNGER
+            t=self.fn["sm"].render(status+" | "+title[:15],True,col); self.screen.blit(t,(px+30,y)); y+=26
+            t=self.fn["xs"].render(desc[:35],True,(160,160,160)); self.screen.blit(t,(px+40,y+2)); y+=22
+            y+=8
+        if self.quest and not self.quest.completed:
+            q=self.quest
+            col=C_HUNGER
+            t=self.fn["sm"].render("进行中 | "+q.title,True,col); self.screen.blit(t,(px+30,y)); y+=26
+            t=self.fn["xs"].render(q.desc[:35],True,(160,160,160)); self.screen.blit(t,(px+40,y+2))
+        t=self.fn["xs"].render("ESC或点击关闭",True,(100,100,100)); self.screen.blit(t,(px+pw//2-t.get_width()//2,py+ph-30))
+        self._btn(SW//2-60,py+ph-28,120,36,"关闭",(80,80,100),C_WHITE)
+        pygame.display.flip()
+
     def _draw_drift_overlay(self):
         if not self.show_drift: return
+        if self.show_quest_log: self._draw_quest_log_overlay(); return
         ov=pygame.Surface((SW,SH),pygame.SRCALPHA)
         pygame.draw.rect(ov,(0,0,0,220),(0,0,SW,SH)); self.screen.blit(ov,(0,0))
         pw,ph=680,520; px,py=(SW-pw)//2,(SH-ph)//2
@@ -1076,32 +1149,33 @@ class Game:
         if self.state=="menu":
             self._draw_menu()
         elif self.state=="main":
-            # Screen shake
             ox=random.randint(-3,3) if self.shk>0 else 0
             oy=random.randint(-3,3) if self.shk>0 else 0
-            surf=self.screen
-            if ox or oy:
-                surf=self.screen.copy()
+            surf=self.screen.copy() if ox or oy else self.screen
             self._draw_bg()
+            if self.weather in ("rainy","stormy"):
+                for _ in range(5): self.parts.rain(random.randint(0,SW),0,20,C_OCEAN if self.weather=="rainy" else (130,130,180),7,3)
             self._draw_island()
-            for d in self.dis: d.draw(self.screen)
-            self.parts.draw(self.screen)
+            for d in self.dis: d.draw(surf)
+            self.parts.draw(surf)
             self._draw_minimap()
             self._draw_main_panel()
             self._draw_ui()
             self._draw_action_buttons()
-            # Messages
             y=SH-260
             for m,t in self.msgs[-5:]:
                 alpha=max(0,min(255,int(255*t/3)))
                 col=tuple(min(255,c) for c in C_SUCCESS)
                 tt=self.fn["sm"].render(m,True,col); tt.set_alpha(int(alpha*255))
-                self.screen.blit(tt,(20,y)); y-=28
+                surf.blit(tt,(20,y)); y-=28
             self._draw_ach_popup(dt=0.016)
+            if surf!=self.screen: self.screen.blit(surf,(ox,oy))
             if self.show_inv: self._draw_inventory_overlay()
             if self.show_cft: self._draw_craft_overlay()
             if self.show_bld: self._draw_build_overlay()
             if self.show_ach: self._draw_ach_overlay()
+            if self.show_drift: self._draw_drift_overlay()
+            if self.show_quest_log: self._draw_quest_log_overlay()
         elif self.state=="combat":
             self._draw_bg()
             self._draw_island()
@@ -1109,36 +1183,18 @@ class Game:
             self._draw_combat_ui()
         elif self.state=="game_over":
             self._draw_bg()
-            t=self.fn["lg"].render("💀 游戲结束",True,C_WARNING)
+            t=self.fn["lg"].render("GAME OVER",True,C_WARNING)
             self.screen.blit(t,t.get_rect(center=(SW//2,SH//2-80)))
-            stats=["生存天数: {}".format(self.p.day),"捕捞:{} 死交:{} 建筑:{}".format(self.p.fish_count,self.p.enemy_kills,self.p.build_count),"成就: {}/7".format(len(self.p.achievements)),"","按 ESC 重新开始"]
+            stats=["Day: "+str(self.p.day),"Fish:"+str(self.p.fish_count),"Kills:"+str(self.p.enemy_kills),"Press ESC to restart"]
             y=SH//2
             for s in stats:
-                if s:
-                    t=self.fn["md"].render(s,True,C_WHITE); self.screen.blit(t,t.get_rect(center=(SW//2,y)))
-                y+=50
-            for event in pygame.event.get():
-                if event.type==pygame.KEYDOWN and event.key==pygame.K_ESCAPE:
-                    self.p=Player(); self.p.inventory={}
-                    self.p.add("木材",15); self.p.add("矹头",8); self.p.add("鱼",3); self.p.add("细累",3)
-                    self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
-                    self.dis=[]; self.msgs=[]; self.parts=Parts()
+                t=self.fn["md"].render(s,True,C_WHITE); self.screen.blit(t,t.get_rect(center=(SW//2,y))); y+=50
+            self._btn(SW//2-80,SH//2+120,160,50,"Restart",C_WARNING,C_WHITE)
+            self._go_restart_btn=[(SW//2-80,SH//2+120,160,50)]
         elif self.state=="victory":
             self._draw_ending_screen()
-            self.screen.blit(t,t.get_rect(center=(SW//2,SH//2-100)))
-            stats=["生存{} 天成功！".format(self.p.day),"捕捞:{} 死交:{} 建筑:{}".format(self.p.fish_count,self.p.enemy_kills,self.p.build_count),"成就: {}/7".format(len(self.p.achievements)),"","按 ESC 重新开始"]
-            y=SH//2
-            for s in stats:
-                if s:
-                    t=self.fn["md"].render(s,True,C_WHITE); self.screen.blit(t,t.get_rect(center=(SW//2,y)))
-                y+=50
-            for event in pygame.event.get():
-                if event.type==pygame.KEYDOWN and event.key==pygame.K_ESCAPE:
-                    self.p=Player(); self.p.inventory={}
-                    self.p.add("木材",15); self.p.add("矹头",8); self.p.add("鱼",3); self.p.add("细累",3)
-                    self.pts=3; self.state="menu"; self.build_slots=self._gen_slots()
-                    self.dis=[]; self.msgs=[]; self.parts=Parts()
         pygame.display.flip()
+
 
     def run(self):
         while self.running:
