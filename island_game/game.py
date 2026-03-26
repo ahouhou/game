@@ -405,6 +405,8 @@ class Game:
         # Set enemy sprite animation
         e_row = ENEMY_ROWS.get(ename, 0)
         self.combat_enemy_anim = AnimState(self._sprites["enemies"], row=e_row, fps=4)
+        # Enemy hit flash state
+        self.enemy_hit_flash = 0.0
 
     def _combat_attack(self):
         dmg = max(1, self.p.patk - self.enemy_dfs + random.randint(-3, 3))
@@ -412,6 +414,7 @@ class Game:
         self.combat_log.append(f"你造成 {dmg} 点伤害!")
         self.parts.burst(700, 300, 15, C_HEALTH, 120)
         self._add_float(f"-{dmg}", 720, 280, C_HEALTH)
+        self.enemy_hit_flash = 0.15  # Flash for 150ms
         self._use_weapon_dur(2)
         if self.enemy_hp <= 0:
             self._combat_victory()
@@ -435,6 +438,8 @@ class Game:
         # Player hurt animation
         self.player_anim.set_row(PLAYER_ROWS["hurt"])
         self.player_action = "hurt"; self.player_action_timer = 0.8
+        # Screen shake
+        self.shake = 0.2
         if self.p.health <= 0:
             self._combat_defeat()
 
@@ -687,6 +692,10 @@ class Game:
         self.t += dt
         self.parts.update(dt)
 
+        # ── Combat enemy hit flash ──
+        if self.state == "combat" and hasattr(self, 'enemy_hit_flash'):
+            self.enemy_hit_flash = max(0, self.enemy_hit_flash - dt)
+
         # ── Player sprite animation ──
         self.player_anim.update(dt)
         if self.player_action_timer > 0:
@@ -818,7 +827,9 @@ class Game:
 
         # Main state
         self.screen.fill(BLACK)
-        R.draw_sky(self.screen, self.t, night)
+        # Calculate day progress (0=midnight, 0.5=noon, 1=midnight)
+        day_progress = (self.day_e % (2 * math.pi)) / (2 * math.pi)
+        R.draw_sky(self.screen, self.t, night, day_progress)
         if night:
             R.draw_stars(self.screen, self.t)
         R.draw_ocean(self.screen, self.wave_t)
@@ -920,7 +931,8 @@ class Game:
             self.combat_log, mouse_pos,
             enemy_sprite=self._sprites["enemies"],
             enemy_row=e_row,
-            enemy_anim=self.combat_enemy_anim
+            enemy_anim=self.combat_enemy_anim,
+            enemy_hit_flash=getattr(self, 'enemy_hit_flash', 0.0)
         )
 
     # ────────── Sprite Drawing ──────────
