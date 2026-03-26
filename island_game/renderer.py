@@ -327,29 +327,43 @@ def draw_quest_log(surface, qlog, quest, mouse_pos=None):
 
 
 # ────────────────── Combat UI ──────────────────
-def draw_combat(surface, php, pmhp, ehp, emhp, ename, patk, pdef, eatk, edfs, clog, mouse_pos=None):
-    for y in range(0,SH//2,4):
-        f=y/(SH//2)
-        pygame.draw.line(surface,(int(50*(1-f)+20*f),int(30*(1-f)+100*f),int(60*(1-f)+180*f)),(0,y),(SW,y))
-    pw,ph = 900,500; px=(SW-pw)//2; py=(SH-ph)//2
-    panel=pygame.Surface((pw,ph),pygame.SRCALPHA); panel.fill((5,8,20,230)); surface.blit(panel,(px,py))
-    pygame.draw.rect(surface, C_HEALTH, (px,py,pw,ph), 2, border_radius=15)
+def draw_combat(surface, php, pmhp, ehp, emhp, ename, patk, pdef, eatk, edfs, clog,
+                mouse_pos=None, enemy_sprite=None, enemy_row=0, enemy_anim=None):
+    for y in range(0, SH//2, 4):
+        f = y / (SH//2)
+        pygame.draw.line(surface,
+            (int(50*(1-f)+20*f), int(30*(1-f)+100*f), int(60*(1-f)+180*f)), (0, y), (SW, y))
+    pw, ph = 900, 500; px = (SW - pw) // 2; py = (SH - ph) // 2
+    panel = pygame.Surface((pw, ph), pygame.SRCALPHA); panel.fill((5, 8, 20, 230))
+    surface.blit(panel, (px, py))
+    pygame.draw.rect(surface, C_HEALTH, (px, py, pw, ph), 2, border_radius=15)
     surface.blit(font("lg").render(f"遭遇 {ename}", True, C_HEALTH),
-                 (px+pw//2-font("lg").size(f"遭遇 {ename}")[0]//2, py+15))
+                 (px + pw//2 - font("lg").size(f"遭遇 {ename}")[0]//2, py+15))
     draw_bar(surface, px+50, py+75, pw-100, 28, ehp, emhp, C_HEALTH)
     surface.blit(font("md").render(f"HP {max(0,ehp)}/{emhp}", True, WHITE),
-                 (px+pw//2-font("md").size(f"HP {max(0,ehp)}/{emhp}")[0]//2, py+78))
+                 (px + pw//2 - font("md").size(f"HP {max(0,ehp)}/{emhp}")[0]//2, py+78))
+
+    # Draw enemy sprite in combat panel (left side)
+    if enemy_sprite is not None and enemy_anim is not None:
+        ef = enemy_anim.current_frame
+        ef = pygame.transform.scale(ef, (ef.get_width()*2, ef.get_height()*2))
+        sprite_x = px + 80 - ef.get_width() // 2
+        sprite_y = py + ph//2 - ef.get_height() // 2 + 20
+        surface.blit(ef, (sprite_x, sprite_y))
+
     draw_bar(surface, px+50, py+145, pw-100, 28, php, pmhp, C_SUCCESS)
     surface.blit(font("md").render(f"你的HP {php}/{pmhp}", True, WHITE),
-                 (px+pw//2-font("md").size(f"你的HP {php}/{pmhp}")[0]//2, py+148))
-    surface.blit(font("sm").render(f"攻击{patk} 防御{pdef}", True, (180,180,180)),
-                 (px+pw//2-font("sm").size(f"攻击{patk} 防御{pdef}")[0]//2, py+178))
-    log_y = py+210
+                 (px + pw//2 - font("md").size(f"你的HP {php}/{pmhp}")[0]//2, py+148))
+    surface.blit(font("sm").render(f"攻击{patk} 防御{pdef}", True, (180, 180, 180)),
+                 (px + pw//2 - font("sm").size(f"攻击{patk} 防御{pdef}")[0]//2, py+178))
+    log_y = py + 210
     for line in clog[-5:]:
-        surface.blit(font("sm").render(line, True, C_TEXT_DIM), (px+50,log_y)); log_y+=28
+        surface.blit(font("sm").render(line, True, C_TEXT_DIM), (px+50, log_y)); log_y += 28
     btns = []
-    for label,bx,bw,bg in [("攻击",60,180,C_HEALTH),("防御",260,180,C_OCEAN),("道具",460,180,C_SUCCESS),("逃跑",660,180,C_STONE)]:
-        btn=Button(px+bx, py+ph-100, bw, 60, label, bg); btn.draw(surface, mouse_pos)
+    for label, bx, bw, bg in [
+            ("攻击", 60, 180, C_HEALTH), ("防御", 260, 180, C_OCEAN),
+            ("道具", 460, 180, C_SUCCESS), ("逃跑", 660, 180, C_STONE)]:
+        btn = Button(px+bx, py+ph-100, bw, 60, label, bg); btn.draw(surface, mouse_pos)
         btns.append(("combat", label, btn))
     return btns
 
